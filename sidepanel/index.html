@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dukjin Global</title>
+  <link rel="stylesheet" href="sidepanel.css" />
+  <link rel="stylesheet" href="live.css" />
+</head>
+<body>
+  <header>
+    <div class="logo">DG</div>
+    <div><b>Dukjin Global</b><small>ENGLISH COMPANION</small></div>
+    <span class="status"><i></i> ACTIVE</span>
+  </header>
+  <main>
+    <section class="video-meta">
+      <span id="sourceBadge">WAITING FOR YOUTUBE</span>
+      <h1 id="videoTitle">Open a Kim Dukjin video to begin.</h1>
+      <p id="videoTitleKo">The side panel will follow your active YouTube video.</p>
+    </section>
+    <section id="emptyState" class="empty">
+      <div>CC</div>
+      <h2>English, right beside the broadcast.</h2>
+      <p>For the full offline demo, open the included GPT-5 episode. Other videos can use Chrome's on-device language model when Korean captions are visible.</p>
+      <a href="https://www.youtube.com/watch?v=YTfathQEoXc" target="_blank">Open demo episode ↗</a>
+      <button id="liveAiButton" class="live-button">Start live on-device translation</button>
+      <div id="liveTranslation" class="live-translation" hidden><small>LIVE ENGLISH</small><b></b><span></span></div>
+    </section>
+    <section id="appState" hidden>
+      <div class="controls">
+        <label><input id="subtitleToggle" type="checkbox" checked /><span></span> English subtitles</label>
+        <button id="localAiButton">Check on-device AI</button>
+      </div>
+      <div id="modelStatus" class="model-status">Pre-generated demo · no data leaves your browser</div>
+      <nav class="tabs" aria-label="Content view">
+        <button data-tab="summary" class="active">Summary</button>
+        <button data-tab="transcript">Transcript</button>
+        <button data-tab="glossary">Glossary</button>
+      </nav>
+      <section id="summary" class="tab-panel active">
+        <small class="label">TL;DR</small>
+        <h2 id="tldr"></h2>
+        <div class="section-title"><b>Key points</b><span id="keyPointCount"></span></div>
+        <ol id="keyPoints" class="key-points"></ol>
+        <div class="section-title"><b>Chapters</b></div>
+        <div id="chapters" class="chapters"></div>
+      </section>
+      <section id="transcript" class="tab-panel">
+        <label class="search"><span>⌕</span><input id="transcriptSearch" placeholder="Search English transcript" /></label>
+        <div id="transcriptList" class="transcript-list"></div>
+      </section>
+      <section id="glossary" class="tab-panel">
+        <div class="glossary-row"><b>생태계</b><span>ecosystem</span><p>The network of models, apps, developers and distribution.</p></div>
+        <div class="glossary-row"><b>왕의 귀환</b><span>the king's return</span><p>A metaphor for reclaiming market leadership.</p></div>
+        <div class="glossary-row"><b>실사용</b><span>real-world use</span><p>Evaluation based on everyday workflows, not benchmarks.</p></div>
+      </section>
+      <footer><span>AI-generated</span> Verify names, numbers and product claims.<small>Built with Codex · Powered by ChatGPT 5.6sol</small></footer>
+    </section>
+  </main>
+  <script src="sidepanel.js"></script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+.live-button {
+  display: block;
+  width: 100%;
+  margin-top: 9px;
+  border: 1px solid var(--blue);
+  background: #fff;
+  color: var(--blue);
+  padding: 10px;
+  font-size: 10px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.live-translation {
+  text-align: left;
+  margin-top: 14px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.live-translation small { display: block; color: var(--blue); font-size: 7px; letter-spacing: .14em; }
+.live-translation b { display: block; font-size: 13px; margin: 5px 0; }
+.live-translation span { display: block; color: var(--muted); font-size: 9px; }
+
+footer small { display: block; margin-top: 6px; color: #777; letter-spacing: .04em; }

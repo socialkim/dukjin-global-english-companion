@@ -1,0 +1,23 @@
+name: Verify and package extension
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --check background.js
+      - run: node --check content.js
+      - run: node --check sidepanel/sidepanel.js
+      - run: node -e "JSON.parse(require('fs').readFileSync('manifest.json', 'utf8'))"
+      - run: zip -r dukjin-global-extension.zip manifest.json background.js content.js sidepanel
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dukjin-global-extension
+          path: dukjin-global-extension.zip

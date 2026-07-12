@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Dukjin Global — English Companion",
+  "version": "0.1.0",
+  "minimum_chrome_version": "138",
+  "description": "English subtitles, summaries and transcripts for Kim Dukjin's Korean AI broadcasts.",
+  "permissions": ["storage", "sidePanel"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Open Dukjin Global"
+  },
+  "side_panel": {
+    "default_path": "sidepanel/index.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/*", "https://youtube.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}
