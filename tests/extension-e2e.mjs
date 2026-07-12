@@ -32,25 +32,10 @@ try {
   await youtubePage.goto("https://www.youtube.com/watch?v=YTfathQEoXc", { waitUntil: "domcontentloaded", timeout: 30_000 });
   await youtubePage.waitForTimeout(1_500);
   await youtubePage.evaluate(() => {
-    document.title = "Dukjin Global E2E - YouTube";
-    const host = document.createElement("div");
-    host.id = "dukjin-e2e-transcript";
-    [["0:00", "첫 번째 테스트 자막입니다."], ["0:06", "두 번째 테스트 자막입니다."]].forEach(([time, text]) => {
-      const row = document.createElement("div");
-      const timestamp = document.createElement("span");
-      const content = document.createElement("span");
-      row.className = "ytwTranscriptSegmentViewModelHost";
-      row.setAttribute("role", "button");
-      timestamp.className = "ytwTranscriptSegmentViewModelTimestamp";
-      content.className = "ytwTranscriptSegmentViewModelText";
-      timestamp.textContent = time;
-      content.textContent = text;
-      row.append(timestamp, content);
-      host.append(row);
-    });
-    document.body.append(host);
+    const video = document.querySelector("video");
+    video?.pause();
+    if (video) video.currentTime = 0;
   });
-  await youtubePage.waitForTimeout(300);
 
   const page = await context.newPage();
   const pageErrors = [];
@@ -73,11 +58,25 @@ try {
   await page.locator("label[for='subtitleToggle']").click();
   assert.match(await page.locator("#subtitleStatus").textContent(), /Off · overlay hidden/);
 
+  await youtubePage.evaluate(() => {
+    const video = document.querySelector("video");
+    video?.pause();
+    if (video) video.currentTime = 0;
+  });
+  const captureStartedAt = Date.now();
   await page.locator("#captureButton").click();
-  await page.waitForFunction(() => document.querySelector("#transcriptStatus")?.textContent === "Ready for analysis", null, { timeout: 8_000 });
+  await page.waitForFunction(() => document.querySelector("#transcriptStatus")?.textContent === "Ready for analysis", null, { timeout: 15_000 });
   assert.equal(await page.locator("#transcriptStatus").textContent(), "Ready for analysis");
-  assert.equal(await page.locator("#cueCount").textContent(), "2 cues");
-  assert.match(await page.locator("#connectionStatus").textContent(), /Transcript ready/i);
+  const cueCount = Number.parseInt(await page.locator("#cueCount").textContent(), 10);
+  assert.ok(cueCount > 100, `Expected a complete YouTube transcript, received ${cueCount} cues.`);
+  assert.match(await page.locator("#connectionStatus").textContent(), /fetched instantly/i);
+  assert.match(await page.locator("#captureHelp").textContent(), /No playback required/i);
+  const playback = await youtubePage.evaluate(() => ({
+    currentTime: document.querySelector("video")?.currentTime || 0,
+    duration: document.querySelector("video")?.duration || 0
+  }));
+  assert.ok(Date.now() - captureStartedAt < 20_000, "Transcript capture took too long.");
+  assert.ok(playback.duration - playback.currentTime > 60, "Transcript capture waited for the video to finish.");
 
   await page.locator("#analyzeButton").click();
   await page.waitForFunction(() => (document.querySelector("#tldr")?.textContent || "").length > 10, null, { timeout: 10_000 });
@@ -90,7 +89,7 @@ try {
   await page.waitForFunction(() => document.querySelector("#localAiButton")?.textContent === "Korean source");
 
   assert.deepEqual(pageErrors, [], `Side-panel page errors: ${pageErrors.join(" | ")}`);
-  console.log(`PASS extension ${extensionId}: API settings/key input, subtitles, YouTube transcript capture, and the full Korean on-device summary/report/infographic flow are interactive.`);
+  console.log(`PASS extension ${extensionId}: fetched ${cueCount} real YouTube cues without playback; API settings/key input, subtitles, and the full Korean on-device summary/report/infographic flow are interactive.`);
 } finally {
   await context?.close();
   if (profilePath.startsWith(tmpdir())) await rm(profilePath, { recursive: true, force: true });

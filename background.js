@@ -1,3 +1,5 @@
+import { parseJson3Transcript, parseTimedTextXml, selectCaptionTrack } from "./caption-utils.js";
+
 const MAX_CUES = 5000;
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -65,9 +67,123 @@ async function appendLiveCue(payload) {
 async function requestTranscriptFromPage(tabId) {
   if (!tabId) return { ok: false, reason: "no-active-youtube-tab", cues: [] };
   try {
-    return await chrome.tabs.sendMessage(tabId, { type: "CAPTURE_TRANSCRIPT" });
+    const existing = await chrome.tabs.sendMessage(tabId, { type: "CAPTURE_TRANSCRIPT" });
+    if (existing?.cues?.length) return { ...existing, autoOpened: false };
+
+    const [{ result: opened } = {}] = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: "MAIN",
+      func: async () => {
+        const segmentSelector = [
+          "ytd-transcript-segment-renderer",
+          "transcript-segment-view-model",
+          "[class*='TranscriptSegmentViewModel'][role='button']",
+          "[class*='transcript-segment'][role='button']"
+        ].join(",");
+        if (document.querySelector(segmentSelector)) return true;
+
+        const expand = document.querySelector("ytd-text-inline-expander #expand, #description #expand");
+        if (expand instanceof HTMLElement) expand.click();
+        await new Promise((resolve) => setTimeout(resolve, 250));
+
+        const transcriptButton = document.querySelector(
+          "ytd-video-description-transcript-section-renderer button, button[aria-label='Show transcript']"
+        );
+        if (!(transcriptButton instanceof HTMLElement)) return false;
+        transcriptButton.click();
+
+        const deadline = Date.now() + 6000;
+        while (Date.now() < deadline) {
+          if (document.querySelector(segmentSelector)) return true;
+          await new Promise((resolve) => setTimeout(resolve, 150));
+        }
+        return false;
+      }
+    });
+    if (!opened) return existing;
+    const captured = await chrome.tabs.sendMessage(tabId, { type: "CAPTURE_TRANSCRIPT" });
+    return { ...captured, autoOpened: Boolean(captured?.cues?.length) };
   } catch {
     return { ok: false, reason: "content-script-unavailable", cues: [] };
+  }
+}
+
+async function readCaptionTracks(tabId) {
+  if (!tabId) return [];
+  try {
+    const [{ result } = {}] = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: "MAIN",
+      func: () => {
+        const parse = (value) => {
+          if (!value) return null;
+          if (typeof value === "object") return value;
+          try { return JSON.parse(value); } catch { return null; }
+        };
+        const player = document.getElementById("movie_player");
+        const candidates = [
+          player?.getPlayerResponse?.(),
+          window.ytInitialPlayerResponse,
+          parse(window.ytplayer?.config?.args?.player_response)
+        ];
+        for (const response of candidates) {
+          const tracks = response?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+          if (Array.isArray(tracks) && tracks.length) {
+            return tracks.map((track) => ({
+              baseUrl: track.baseUrl,
+              languageCode: track.languageCode,
+              kind: track.kind || "",
+              vssId: track.vssId || "",
+              isTranslatable: Boolean(track.isTranslatable),
+              name: track.name || null
+            }));
+          }
+        }
+        return [];
+      }
+    });
+    return Array.isArray(result) ? result : [];
+  } catch {
+    return [];
+  }
+}
+
+async function downloadCaptionTrack(track) {
+  const jsonUrl = new URL(track.baseUrl);
+  jsonUrl.searchParams.set("fmt", "json3");
+  try {
+    const response = await fetch(jsonUrl, { credentials: "include", cache: "no-store" });
+    if (!response.ok) throw new Error(`caption-http-${response.status}`);
+    const cues = parseJson3Transcript(await response.json());
+    if (cues.length) return cues;
+  } catch {
+    // Older or restricted tracks can still expose the timed-text XML representation.
+  }
+  const xmlUrl = new URL(track.baseUrl);
+  xmlUrl.searchParams.delete("fmt");
+  const response = await fetch(xmlUrl, { credentials: "include", cache: "no-store" });
+  if (!response.ok) throw new Error(`caption-http-${response.status}`);
+  return parseTimedTextXml(await response.text());
+}
+
+async function requestInstantTranscript(context, preferredLanguage = "ko") {
+  if (!context?.tabId) return { ok: false, reason: "no-active-youtube-tab", cues: [] };
+  const tracks = await readCaptionTracks(context.tabId);
+  if (!tracks.length) return { ok: false, reason: "youtube-caption-track-not-found", cues: [] };
+  const track = selectCaptionTrack(tracks, preferredLanguage);
+  if (!track) return { ok: false, reason: "preferred-caption-track-not-found", cues: [] };
+  try {
+    const cues = (await downloadCaptionTrack(track)).slice(0, MAX_CUES).map(cleanCue).filter((cue) => cue.ko);
+    return {
+      ok: cues.length > 0,
+      cues,
+      reason: cues.length ? "" : "youtube-caption-track-empty",
+      source: "youtube-caption-track",
+      instant: true,
+      track: { languageCode: track.languageCode, label: track.label, kind: track.kind || "manual" }
+    };
+  } catch (error) {
+    return { ok: false, reason: cleanText(error?.message, 120) || "youtube-caption-download-failed", cues: [] };
   }
 }
 
@@ -99,15 +215,32 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === "REQUEST_TRANSCRIPT") {
     getActiveContext().then(async (context) => {
+      const instantResult = await requestInstantTranscript(context, message.payload?.preferredLanguage || "ko");
+      if (instantResult.cues?.length) {
+        sendResponse({ ...instantResult, context });
+        return;
+      }
       const pageResult = await requestTranscriptFromPage(context?.tabId);
       if (pageResult?.cues?.length) {
-        sendResponse({ ...pageResult, context, source: "youtube-transcript-panel" });
+        sendResponse({
+          ...pageResult,
+          context,
+          source: pageResult.autoOpened ? "youtube-transcript-panel-auto" : "youtube-transcript-panel",
+          instant: Boolean(pageResult.autoOpened),
+          track: pageResult.autoOpened ? { languageCode: "ko", label: "YouTube transcript", kind: "panel" } : undefined
+        });
         return;
       }
       const key = `liveTranscript:${context?.videoId || ""}`;
       const stored = await chrome.storage.local.get(key);
       const liveCues = Array.isArray(stored[key]) ? stored[key] : [];
-      sendResponse({ ok: liveCues.length > 0, context, cues: liveCues, source: "watched-live-captions", reason: pageResult?.reason || "transcript-panel-not-open" });
+      sendResponse({
+        ok: liveCues.length > 0,
+        context,
+        cues: liveCues,
+        source: "watched-live-captions",
+        reason: pageResult?.reason || instantResult.reason || "transcript-panel-not-open"
+      });
     });
     return true;
   }

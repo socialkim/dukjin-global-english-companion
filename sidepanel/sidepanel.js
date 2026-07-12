@@ -545,9 +545,9 @@ async function saveSettingsFromForm() {
 async function captureTranscript() {
   setHeaderStatus("capturing", "busy");
   $("#captureButton").disabled = true;
-  setConnectionStatus("Reading the visible YouTube transcript panel…");
+  setConnectionStatus("Fetching the complete YouTube transcript without playback…");
   try {
-    const result = await chrome.runtime.sendMessage({ type: "REQUEST_TRANSCRIPT" });
+    const result = await chrome.runtime.sendMessage({ type: "REQUEST_TRANSCRIPT", payload: { preferredLanguage: "ko" } });
     context = result?.context || context;
     capturedCues = result?.cues || [];
     transcriptSource = result?.source || "";
@@ -556,12 +556,23 @@ async function captureTranscript() {
     updateTranscriptStatus();
     renderLocalization(null);
     if (!capturedCues.length) {
-      throw new Error("No transcript found. On YouTube, open the description/menu and choose Show transcript, then try again. You can also watch with Korean captions to collect cues live.");
+      throw new Error("No downloadable captions were found for this video. If YouTube offers Show transcript, open it and try again; otherwise live-caption collection remains available as a fallback.");
     }
-    $("#captureHelp").textContent = `${capturedCues.length} cues captured from ${transcriptSource.replaceAll("-", " ")}.`;
-    setConnectionStatus(isApiMode()
-      ? "Transcript ready. Configure the API connection in Settings, then run Translate + analyze."
-      : "Transcript ready. Run the private on-device workflow; no API key is required.", "success");
+    if (result?.instant) {
+      const trackType = result.track?.kind === "asr"
+        ? "auto-generated"
+        : result.track?.kind === "panel"
+          ? ""
+          : "creator-provided";
+      const trackName = result.track?.label || result.track?.languageCode || "selected";
+      $("#captureHelp").textContent = `${capturedCues.length} cues fetched instantly from the ${trackName}${trackType ? ` ${trackType}` : ""}. No playback required.`;
+      setConnectionStatus("Full transcript fetched instantly. Run step 2 in the selected mode.", "success");
+    } else {
+      $("#captureHelp").textContent = `${capturedCues.length} cues captured from ${transcriptSource.replaceAll("-", " ")}.`;
+      setConnectionStatus(isApiMode()
+        ? "Transcript ready. Configure the API connection in Settings, then run Translate + analyze."
+        : "Transcript ready. Run the private on-device workflow; no API key is required.", "success");
+    }
     switchTab("transcript");
   } catch (error) {
     setConnectionStatus(error.message, "error");
@@ -601,7 +612,7 @@ async function analyzeWithApi() {
         titleEn: analysis.title,
         durationMs: context.durationMs
       },
-      transcript: { language: "ko", complete: transcriptSource === "youtube-transcript-panel", cues: translatedCues },
+      transcript: { language: "ko", complete: ["youtube-caption-track", "youtube-transcript-panel", "youtube-transcript-panel-auto"].includes(transcriptSource), cues: translatedCues },
       english: {
         language: settings.targetLanguage,
         summary: { tldr: analysis.tldr, keyPoints: analysis.keyPoints, chapters: analysis.chapters },
@@ -653,7 +664,7 @@ async function analyzeOnDevice() {
     const payload = {
       schemaVersion: 3,
       video: { id: context.videoId, titleKo: context.title, titleEn: analysis.title, durationMs: context.durationMs },
-      transcript: { language: "ko", complete: transcriptSource === "youtube-transcript-panel", cues: translatedCues },
+      transcript: { language: "ko", complete: ["youtube-caption-track", "youtube-transcript-panel", "youtube-transcript-panel-auto"].includes(transcriptSource), cues: translatedCues },
       english: {
         language,
         summary: { tldr: analysis.tldr, keyPoints: analysis.keyPoints, chapters: analysis.chapters },

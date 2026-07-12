@@ -2,7 +2,18 @@
 
 > **Built with Codex · Powered by ChatGPT 5.6 Sol**
 
-한국어 YouTube 방송을 다국어 자막, 한 장 인포그래픽, 보고서로 전환하는 Chrome Manifest V3 확장 프로그램입니다. v0.4부터 작업을 시작하기 전에 **온디바이스 모드**와 **OpenAI API 모드**를 명확히 선택합니다. v0.4.1은 v0.4.0의 사이드패널 모듈 로딩 오류를 수정한 필수 업데이트입니다.
+한국어 YouTube 방송을 다국어 자막, 한 장 인포그래픽, 보고서로 전환하는 Chrome Manifest V3 확장 프로그램입니다. v0.5는 영상을 끝까지 재생하거나 사용자가 대본 패널을 미리 열 필요 없이, YouTube가 이미 생성한 전체 자막을 즉시 가져옵니다. 이 수집 단계는 **온디바이스 모드**와 **OpenAI API 모드** 모두에서 무료로 작동합니다.
+
+## v0.5 — 재생 없는 전체 자막 가져오기
+
+**Fetch full transcript**를 누르면 다음 순서로 동작합니다.
+
+1. 현재 YouTube 플레이어의 자막 트랙 메타데이터를 확인합니다.
+2. 사용 가능한 경우 YouTube timed-text 자막을 즉시 내려받습니다.
+3. 자막 주소가 빈 응답을 주는 최신 YouTube 변형에서는 Show transcript 백엔드를 자동으로 열어 전체 구간을 읽습니다.
+4. 위 두 방법을 쓸 수 없는 경우에만 사용자가 연 대본 패널 또는 시청 중 라이브 자막을 폴백으로 사용합니다.
+
+OpenAI API는 이 자막 수집에 관여하지 않습니다. API 키는 사용자가 **Translate + analyze**를 실행해 생성형 번역·요약·보고서·이미지를 만들 때만 필요합니다.
 
 ## 두 가지 모드
 
@@ -21,7 +32,7 @@
 
 ## 설치
 
-1. GitHub Releases에서 최신 `dukjin-global-extension-v0.4.1.zip`을 내려받아 압축을 풉니다.
+1. GitHub Releases에서 최신 `dukjin-global-extension-v0.5.0.zip`을 내려받아 압축을 풉니다.
 2. Chrome에서 `chrome://extensions`를 엽니다.
 3. **개발자 모드**를 켭니다.
 4. **압축해제된 확장 프로그램을 로드합니다**를 누르고 압축을 푼 폴더를 선택합니다.
@@ -30,8 +41,8 @@
 ## 공통 작업 순서
 
 1. 사이드패널 상단에서 **On-device** 또는 **OpenAI API**를 선택합니다.
-2. YouTube 영상 설명/메뉴에서 **스크립트 표시(Show transcript)**를 엽니다.
-3. 확장 프로그램에서 **Capture transcript**를 누릅니다.
+2. **Fetch full transcript**를 누릅니다. 영상 재생이나 Show transcript 수동 조작은 필요 없습니다.
+3. 전체 자막 구간 수와 `No playback required` 안내를 확인합니다.
 4. 출력 언어를 선택합니다.
 5. 선택한 모드에 맞는 두 번째 버튼을 누릅니다.
 6. Summary, Transcript, Studio에서 결과를 확인하고 영상 타임스탬프로 이동합니다.
@@ -89,15 +100,16 @@ npm run start:env
 - Player subtitles 스위치는 상태를 로컬에 기억하고 현재 YouTube 콘텐츠 스크립트에 전달합니다.
 - “content script did not respond”가 표시되면 YouTube 탭을 한 번 새로고침한 뒤 다시 켭니다. 확장 프로그램을 업데이트한 직후 열려 있던 탭에는 새 콘텐츠 스크립트가 아직 주입되지 않았을 수 있습니다.
 - 자막이 켜져 있어도 번역 cue가 없으면 오버레이는 표시되지 않습니다. 먼저 온디바이스 번역 또는 API 분석을 완료하세요.
-- YouTube 자동 자막만 사용하는 경우 한국어 자막을 화면에 켜야 실시간 cue가 수집됩니다.
+- 즉시 자막 수집이 실패한 영상에서 라이브 폴백을 사용할 때만 한국어 자막을 화면에 켜야 합니다.
 
 ## 권한과 개인정보
 
 - `storage`: 모드, 설정, 자막 상태, 영상별 결과 캐시
 - `sidePanel`: YouTube 옆의 작업 UI
+- `scripting` 및 YouTube host permission: 현재 영상의 자막 트랙 확인과 Show transcript 자동 호출
 - `api.openai.com`: 개인 세션 키 모드
 - 선택적 host permission: 사용자가 지정한 프록시 주소
-- YouTube content script: 현재 영상 ID, 재생 시간, 표시 중인 자막, 사용자가 연 스크립트 패널
+- YouTube content script: 현재 영상 ID, 재생 시간, YouTube가 제공한 자막 트랙·대본 구간, 표시 중인 라이브 자막
 
 쿠키, Google 계정 정보, 전체 시청 기록, 광고 데이터는 읽지 않습니다.
 
@@ -106,13 +118,15 @@ npm run start:env
 ```bash
 npm run check
 npm test
+npm run test:e2e
 ```
 
-테스트는 모드 마이그레이션, 모델 라우팅, 구조화 출력, 온디바이스 빠른 브리프, 보고서 escaping, 타임스탬프, 인포그래픽·Settings 컨트롤을 확인합니다.
+테스트는 모드 마이그레이션, 모델 라우팅, 구조화 출력, 자막 트랙 선택과 JSON3/XML 파싱, 온디바이스 빠른 브리프, 보고서 escaping, 타임스탬프, 인포그래픽·Settings 컨트롤을 확인합니다. E2E는 실제 김덕진 YouTube 영상을 열어 재생 완료를 기다리지 않고 전체 자막을 가져온 뒤 온디바이스 보고서와 PNG까지 생성합니다.
 
 ## 한계
 
-- YouTube transcript DOM은 공식 API가 아니므로 YouTube UI가 바뀌면 selector 업데이트가 필요할 수 있습니다.
+- YouTube의 공개 Transcript API가 아니라 플레이어 자막 트랙과 transcript UI를 사용하므로 YouTube 내부 형식이 바뀌면 파서나 selector 업데이트가 필요할 수 있습니다.
+- 영상에 제작자 자막과 자동 생성 자막이 모두 없으면 즉시 수집할 원본이 없습니다. 이때는 라이브 자막 폴백 또는 별도의 음성 인식 서버가 필요합니다.
 - 온디바이스 결과는 추출형이므로 긴 문맥의 종합과 논지 추론은 API 모드보다 제한적입니다.
 - 자동 자막에는 인명·제품명·숫자 오류가 있을 수 있으므로 중요한 내용은 원본 영상과 대조해야 합니다.
 - GPT Image 계열은 정확한 문구 조판을 보장하지 않습니다. 배포용 글자가 중요하면 Canvas PNG를 사용하세요.
