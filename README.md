@@ -4,7 +4,7 @@
 
 한국어 YouTube 방송의 전사를 수집하고 원하는 언어로 자막을 번역한 뒤, 요약·키포인트·챕터·용어집을 생성하는 Chrome Manifest V3 확장 프로그램입니다. 특정 데모 영상에 종속되지 않습니다.
 
-## v0.2.1에서 실제로 동작하는 기능
+## v0.3.0에서 실제로 동작하는 기능
 
 - 현재 YouTube 영상과 SPA 재생목록 이동 감지
 - 열린 YouTube 스크립트 패널에서 전체 timed transcript 수집
@@ -15,13 +15,18 @@
 - 번역 자막을 플레이어 재생 시간에 동기화
 - 영상별 결과 로컬 캐시와 검색 가능한 한영 전사
 - 타임스탬프 클릭 seek
-- English, Japanese, Spanish, French, German, Portuguese 출력
 - Chrome 온디바이스 한국어→영어 실시간 번역 폴백
 - API 오류, 자막 미발견, 영상 전환, 캐시 삭제 처리
+- 현재 YouTube 영상 썸네일과 원본 바로가기
+- Korean, English, Japanese, Chinese, Spanish, French, German, Portuguese 출력
+- 선택 언어로 1080×1920 정확 조판 인포그래픽 PNG 생성
+- GPT Image 2 기반 일러스트형 인포그래픽 선택 생성
+- 근거 타임스탬프가 포함된 상세 보고서 생성
+- 보고서 Markdown 및 인쇄용 HTML 다운로드
 
 ## 다운로드와 설치
 
-1. GitHub Releases에서 `dukjin-global-extension-v0.2.1.zip`을 내려받아 압축을 풉니다.
+1. GitHub Releases에서 `dukjin-global-extension-v0.3.0.zip`을 내려받아 압축을 풉니다.
 2. Chrome 138 이상에서 `chrome://extensions`를 엽니다.
 3. **개발자 모드**를 켭니다.
 4. **압축해제된 확장 프로그램을 로드**하고 압축을 푼 폴더를 선택합니다.
@@ -34,6 +39,18 @@
 3. Settings에서 보안 프록시 또는 개인 세션 키를 설정합니다.
 4. **Translate + analyze**를 누릅니다.
 5. 완료되면 번역 자막이 영상에 표시되고 Summary, Transcript, Glossary 탭이 채워집니다.
+
+## 인포그래픽과 보고서 사용법
+
+1. YouTube에서 전체 스크립트를 열고 **Capture transcript**를 누릅니다.
+2. **Infographic & report studio**에서 출력 언어를 선택합니다.
+3. **Create infographic** 또는 **Create report**를 누릅니다. 한 번의 구조화 분석으로 두 결과가 함께 준비됩니다.
+4. 기본 인포그래픽은 정확한 텍스트를 유지하는 1080×1920 Canvas PNG입니다.
+5. 시각적 일러스트가 필요하면 **AI illustrated version**을 눌러 GPT Image 2 포스터를 생성합니다.
+6. 보고서는 Markdown 또는 인쇄용 HTML로 내려받을 수 있습니다. HTML을 브라우저에서 열고 인쇄하면 PDF로 저장할 수 있습니다.
+
+GPT Image 모델은 글자 배치와 철자를 완벽하게 보장하지 않으므로, 정확한 문구가 중요한 배포물에는 기본 Canvas PNG를 사용하십시오.
+계정 상태에 따라 GPT Image 사용 전에 OpenAI API 조직 확인이 필요할 수 있습니다.
 
 YouTube가 스크립트를 제공하지 않으면 한국어 자막을 켜고 영상을 시청하십시오. 시청한 구간의 cue를 모아 부분 분석할 수 있습니다.
 
@@ -96,12 +113,15 @@ npm run start:env
 ## OpenAI 요청 구조
 
 - Responses API
+- Image API (`gpt-image-2`, 사용자가 일러스트형 모드를 선택한 경우만)
 - 기본 자막 모델 `gpt-5.4-mini`, 기본 분석 모델 `gpt-5.6-luna`
 - strict JSON Schema structured outputs
 - 분석 요청 1회 + 자막 45개 단위 번역 요청
 - 입력은 사용자가 명시적으로 분석 버튼을 누른 영상 전사만 포함
 - 모델 출력은 HTML로 삽입하지 않고 `textContent`로 렌더링
 - 전사 안의 문장을 명령으로 취급하지 않도록 prompt-injection 경계를 명시
+- 보고서와 인포그래픽의 주장마다 원본 전사의 가까운 타임스탬프를 요구
+- 이미지 생성 프록시는 GPT Image 2, 1장, PNG, 허용된 크기·품질만 통과
 
 ## 권한과 개인정보
 

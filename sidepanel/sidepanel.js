@@ -1,4 +1,5 @@
 import {
+  artifactLabels,
   DEFAULT_SETTINGS,
   OpenAIConnection,
   clearSessionSecrets,
@@ -7,6 +8,15 @@ import {
   requestProxyPermission,
   saveConnection
 } from "./api-client.js";
+import {
+  buildReportHtml,
+  buildReportMarkdown,
+  downloadText,
+  downloadUrl,
+  formatTimestamp,
+  renderInfographicCanvas,
+  slugify
+} from "./artifacts.js";
 
 const $ = (selector) => document.querySelector(selector);
 let context = null;
@@ -19,6 +29,11 @@ let translator = null;
 let translationQueue = Promise.resolve();
 let lastObservedKey = "";
 let currentAbort = null;
+let publishingPack = null;
+let publishingSignature = "";
+let accurateInfographicDataUrl = "";
+let illustratedInfographicDataUrl = "";
+let activeInfographicDataUrl = "";
 
 function formatTime(ms) {
   const total = Math.max(0, Math.floor(Number(ms || 0) / 1000));
@@ -47,6 +62,9 @@ function setBusy(busy) {
   $("#captureButton").disabled = busy;
   $("#analyzeButton").disabled = busy || capturedCues.length === 0;
   $("#cancelButton").hidden = !busy;
+  $("#createInfographicButton").disabled = busy || capturedCues.length === 0;
+  $("#createReportButton").disabled = busy || capturedCues.length === 0;
+  $("#illustrateButton").disabled = busy || !publishingPack;
   if (!busy) currentAbort = null;
 }
 
@@ -58,6 +76,16 @@ function updateTranscriptStatus() {
   $("#cueCount").textContent = `${capturedCues.length} cues`;
   $("#transcriptStatus").textContent = capturedCues.length ? "Ready for analysis" : "Not captured";
   $("#analyzeButton").disabled = capturedCues.length === 0 || Boolean(currentAbort);
+  $("#createInfographicButton").disabled = capturedCues.length === 0 || Boolean(currentAbort);
+  $("#createReportButton").disabled = capturedCues.length === 0 || Boolean(currentAbort);
+}
+
+function renderVideoCard() {
+  const preview = $("#videoPreview");
+  if (!context?.videoId) { preview.hidden = true; return; }
+  preview.hidden = false;
+  preview.href = `https://youtu.be/${context.videoId}`;
+  $("#videoThumbnail").src = `https://i.ytimg.com/vi/${context.videoId}/hqdefault.jpg`;
 }
 
 function renderTranscript(filter = "") {
@@ -141,6 +169,160 @@ function renderLocalization(payload) {
   renderTranscript($("#transcriptSearch").value);
 }
 
+function appendTextList(parent, items, ordered = false) {
+  const list = document.createElement(ordered ? "ol" : "ul");
+  items.forEach((item) => { const li = document.createElement("li"); li.textContent = item; list.append(li); });
+  parent.append(list);
+}
+
+function renderReport(report) {
+  const labels = artifactLabels($("#artifactLanguage").value);
+  const root = $("#reportPreview");
+  root.replaceChildren();
+  const title = document.createElement("h2");
+  const subtitle = document.createElement("p");
+  const summary = document.createElement("p");
+  title.textContent = report.title;
+  subtitle.textContent = report.subtitle;
+  summary.className = "report-summary";
+  summary.textContent = report.executiveSummary;
+  root.append(title, subtitle, summary);
+  report.sections.forEach((item) => {
+    const section = document.createElement("section");
+    const heading = document.createElement("h3");
+    const body = document.createElement("p");
+    const evidence = document.createElement("ul");
+    heading.textContent = item.heading;
+    body.textContent = item.body;
+    item.evidence.forEach((entry) => {
+      const li = document.createElement("li");
+      const button = document.createElement("button");
+      const text = document.createTextNode(` ${entry.text}`);
+      button.className = "timestamp-link";
+      button.textContent = formatTimestamp(entry.startMs);
+      button.addEventListener("click", () => seek(entry.startMs));
+      li.append(button, text);
+      evidence.append(li);
+    });
+    section.append(heading, body, evidence);
+    root.append(section);
+  });
+  const recommendations = document.createElement("section");
+  const recommendationsTitle = document.createElement("h3");
+  recommendationsTitle.textContent = labels.recommendations;
+  recommendations.append(recommendationsTitle);
+  appendTextList(recommendations, report.recommendations, true);
+  const caveats = document.createElement("section");
+  const caveatsTitle = document.createElement("h3");
+  caveatsTitle.textContent = labels.caveats;
+  caveats.append(caveatsTitle);
+  appendTextList(caveats, report.caveats);
+  root.append(recommendations, caveats);
+}
+
+function renderPublishingPack(pack, language) {
+  publishingPack = pack;
+  accurateInfographicDataUrl = renderInfographicCanvas(pack.infographic, { id: context.videoId, title: context.title }, language).toDataURL("image/png");
+  illustratedInfographicDataUrl = "";
+  activeInfographicDataUrl = accurateInfographicDataUrl;
+  $("#studioEmpty").hidden = true;
+  $("#studioContent").hidden = false;
+  $("#infographicPreview").src = activeInfographicDataUrl;
+  $("#infographicMode").textContent = "ACCURATE CANVAS";
+  $("#reportLanguage").textContent = language.toUpperCase();
+  $("#illustrateButton").textContent = "AI illustrated version";
+  $("#illustrateButton").disabled = false;
+  renderReport(pack.report);
+}
+
+function resetPublishingPack() {
+  publishingPack = null;
+  publishingSignature = "";
+  accurateInfographicDataUrl = "";
+  illustratedInfographicDataUrl = "";
+  activeInfographicDataUrl = "";
+  $("#studioEmpty").hidden = false;
+  $("#studioContent").hidden = true;
+}
+
+async function ensurePublishingPack() {
+  if (!capturedCues.length || !context?.videoId) throw new Error("Capture a YouTube transcript first.");
+  const language = $("#artifactLanguage").value;
+  const signature = `${context.videoId}:${language}:${capturedCues.length}:${capturedCues.at(-1)?.startMs || 0}`;
+  if (publishingPack && signature === publishingSignature) return publishingPack;
+  $("#targetLanguage").value = language;
+  currentAbort = new AbortController();
+  setBusy(true);
+  setHeaderStatus("publishing", "busy");
+  setProgress(5, `Preparing ${language} publishing pack…`);
+  try {
+    const client = await saveSettingsFromForm();
+    setProgress(20, "Grounding infographic and report in the transcript…");
+    const pack = await client.createPublishingPack({ title: context.title, cues: capturedCues, language, signal: currentAbort.signal });
+    setProgress(82, "Rendering accurate infographic PNG…");
+    renderPublishingPack(pack, language);
+    publishingSignature = signature;
+    setProgress(100, "Infographic and report ready");
+    setConnectionStatus(`Publishing pack created in ${language} with ${settings.analysisModel}.`, "success");
+    setHeaderStatus("complete");
+    return pack;
+  } catch (error) {
+    if (error.name === "AbortError") setConnectionStatus("Publishing cancelled.", "error");
+    else setConnectionStatus(error.message, "error");
+    setHeaderStatus("error", "error");
+    throw error;
+  } finally { setBusy(false); }
+}
+
+async function openPublishingArtifact(kind) {
+  try {
+    await ensurePublishingPack();
+    switchTab("studio");
+    $(kind === "report" ? "#reportPreview" : "#infographicPreview").scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch {}
+}
+
+async function toggleIllustratedInfographic() {
+  if (!publishingPack) return;
+  if (illustratedInfographicDataUrl && activeInfographicDataUrl === illustratedInfographicDataUrl) {
+    activeInfographicDataUrl = accurateInfographicDataUrl;
+    $("#infographicPreview").src = activeInfographicDataUrl;
+    $("#infographicMode").textContent = "ACCURATE CANVAS";
+    $("#illustrateButton").textContent = "AI illustrated version";
+    return;
+  }
+  if (illustratedInfographicDataUrl) {
+    activeInfographicDataUrl = illustratedInfographicDataUrl;
+    $("#infographicPreview").src = activeInfographicDataUrl;
+    $("#infographicMode").textContent = "GPT IMAGE 2";
+    $("#illustrateButton").textContent = "Restore accurate canvas";
+    return;
+  }
+  currentAbort = new AbortController();
+  setBusy(true);
+  setHeaderStatus("illustrating", "busy");
+  setProgress(8, "Sending the grounded design brief to GPT Image 2…");
+  try {
+    const client = await saveSettingsFromForm();
+    illustratedInfographicDataUrl = await client.generateIllustratedInfographic({
+      title: context.title,
+      infographic: publishingPack.infographic,
+      language: $("#artifactLanguage").value,
+      signal: currentAbort.signal
+    });
+    activeInfographicDataUrl = illustratedInfographicDataUrl;
+    $("#infographicPreview").src = activeInfographicDataUrl;
+    $("#infographicMode").textContent = "GPT IMAGE 2";
+    $("#illustrateButton").textContent = "Restore accurate canvas";
+    setProgress(100, "AI illustrated infographic ready");
+    setConnectionStatus("GPT Image 2 illustration created. Review all rendered wording before publishing.", "success");
+    setHeaderStatus("complete");
+  } catch (error) {
+    if (error.name !== "AbortError") setConnectionStatus(error.message, "error");
+    setHeaderStatus("error", "error");
+  } finally { setBusy(false); }
+}
+
 function switchTab(tabName) {
   document.querySelectorAll(".tabs button, .tab-panel").forEach((item) => item.classList.remove("active"));
   document.querySelector(`.tabs button[data-tab='${tabName}']`)?.classList.add("active");
@@ -159,6 +341,8 @@ function populateSettingsForm() {
   $("#translationModel").value = settings.translationModel;
   $("#analysisModel").value = settings.analysisModel;
   $("#targetLanguage").value = settings.targetLanguage;
+  $("#artifactLanguage").value = settings.targetLanguage;
+  $("#imageQuality").value = settings.imageQuality;
   $("#translationStyle").value = settings.translationStyle;
   $("#apiKey").value = secrets.apiKey;
   $("#proxyToken").value = secrets.proxyToken;
@@ -173,6 +357,7 @@ function readSettingsForm() {
       proxyEndpoint: $("#proxyEndpoint").value,
       translationModel: $("#translationModel").value,
       analysisModel: $("#analysisModel").value,
+      imageQuality: $("#imageQuality").value,
       targetLanguage: $("#targetLanguage").value,
       translationStyle: $("#translationStyle").value
     },
@@ -203,6 +388,7 @@ async function captureTranscript() {
     capturedCues = result?.cues || [];
     transcriptSource = result?.source || "";
     localization = null;
+    resetPublishingPack();
     updateTranscriptStatus();
     renderLocalization(null);
     if (!capturedCues.length) {
@@ -312,6 +498,7 @@ async function initialize() {
     $("#videoTitle").textContent = context.title;
     $("#videoTitleKo").textContent = `YouTube ID · ${context.videoId}`;
     $("#sourceBadge").textContent = "ACTIVE YOUTUBE VIDEO";
+    renderVideoCard();
   }
   renderLocalization(response?.localization || null);
   if (response?.localization) {
@@ -328,10 +515,29 @@ async function initialize() {
 
 document.querySelectorAll(".tabs button").forEach((button) => button.addEventListener("click", () => switchTab(button.dataset.tab)));
 $("#connectionMode").addEventListener("change", updateModeFields);
+$("#artifactLanguage").addEventListener("change", (event) => { $("#targetLanguage").value = event.target.value; resetPublishingPack(); });
+$("#targetLanguage").addEventListener("change", (event) => { $("#artifactLanguage").value = event.target.value; resetPublishingPack(); });
 $("#transcriptSearch").addEventListener("input", (event) => renderTranscript(event.target.value));
 $("#subtitleToggle").addEventListener("change", (event) => chrome.runtime.sendMessage({ type: "SET_SUBTITLES", payload: { enabled: event.target.checked } }));
 $("#captureButton").addEventListener("click", captureTranscript);
 $("#analyzeButton").addEventListener("click", analyzeVideo);
+$("#createInfographicButton").addEventListener("click", () => openPublishingArtifact("infographic"));
+$("#createReportButton").addEventListener("click", () => openPublishingArtifact("report"));
+$("#illustrateButton").addEventListener("click", toggleIllustratedInfographic);
+$("#downloadInfographicButton").addEventListener("click", () => {
+  if (!activeInfographicDataUrl || !publishingPack) return;
+  downloadUrl(activeInfographicDataUrl, `${slugify(publishingPack.infographic.title)}-${slugify($("#artifactLanguage").value)}-infographic.png`);
+});
+$("#downloadMarkdownButton").addEventListener("click", () => {
+  if (!publishingPack) return;
+  const language = $("#artifactLanguage").value;
+  downloadText(buildReportMarkdown(publishingPack, { id: context.videoId, title: context.title }, language), `${slugify(publishingPack.report.title)}.md`, "text/markdown;charset=utf-8");
+});
+$("#downloadHtmlButton").addEventListener("click", () => {
+  if (!publishingPack) return;
+  const language = $("#artifactLanguage").value;
+  downloadText(buildReportHtml(publishingPack, { id: context.videoId, title: context.title }, language), `${slugify(publishingPack.report.title)}.html`, "text/html;charset=utf-8");
+});
 $("#cancelButton").addEventListener("click", () => currentAbort?.abort());
 $("#localAiButton").addEventListener("click", enableOnDeviceTranslation);
 $("#saveSettingsButton").addEventListener("click", async () => {
@@ -360,12 +566,28 @@ $("#clearVideoButton").addEventListener("click", async () => {
   await chrome.runtime.sendMessage({ type: "CLEAR_VIDEO_DATA" });
   localization = null;
   capturedCues = [];
+  resetPublishingPack();
   updateTranscriptStatus();
   renderLocalization(null);
   setConnectionStatus("Cached analysis and captured live cues cleared.", "success");
 });
 
 chrome.runtime.onMessage.addListener((message) => {
+  if (message?.type === "VIDEO_CONTEXT_CHANGED") {
+    if (message.payload?.videoId !== context?.videoId) {
+      context = { ...message.payload, tabId: context?.tabId };
+      capturedCues = [];
+      localization = null;
+      resetPublishingPack();
+      $("#videoTitle").textContent = context.title || "Active YouTube video";
+      $("#videoTitleKo").textContent = `YouTube ID · ${context.videoId}`;
+      $("#sourceBadge").textContent = "ACTIVE YOUTUBE VIDEO";
+      renderVideoCard();
+      updateTranscriptStatus();
+      renderLocalization(null);
+    }
+    return;
+  }
   if (message?.type !== "LIVE_CAPTION" || !message.payload?.ko) return;
   const payload = message.payload;
   const key = `${payload.videoId}:${payload.timeMs}:${payload.ko}`;

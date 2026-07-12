@@ -20,6 +20,11 @@
       <p id="videoTitleKo">The companion follows the active YouTube tab.</p>
     </section>
 
+    <a id="videoPreview" class="video-preview" target="_blank" rel="noreferrer" hidden>
+      <img id="videoThumbnail" alt="Active YouTube video thumbnail" />
+      <span><small>ACTIVE YOUTUBE VIDEO</small><b>Open source video ↗</b></span>
+    </a>
+
     <section class="workflow-card">
       <div class="workflow-head">
         <div><small>TRANSCRIPT</small><b id="transcriptStatus">Not captured</b></div>
@@ -38,6 +43,16 @@
       <div id="connectionStatus" class="connection-status">Configure an AI connection in Settings, or use Chrome's on-device live translator.</div>
     </section>
 
+    <section class="studio-launch">
+      <div class="workflow-head"><div><small>PUBLISH THIS VIDEO</small><b>Infographic & report studio</b></div><span>NEW</span></div>
+      <p>Choose a language. One grounded AI pass prepares both a one-page infographic and a detailed report.</p>
+      <label class="studio-language"><span>Output language</span><select id="artifactLanguage"><option>Korean</option><option selected>English</option><option>Japanese</option><option>Chinese (Simplified)</option><option>Spanish</option><option>French</option><option>German</option><option>Portuguese</option></select></label>
+      <div class="action-row">
+        <button id="createInfographicButton" class="secondary" disabled>Create infographic</button>
+        <button id="createReportButton" class="secondary" disabled>Create report</button>
+      </div>
+    </section>
+
     <section class="live-card">
       <div><small>NO API FALLBACK</small><b>Live on-device translation</b></div>
       <button id="localAiButton">Enable</button>
@@ -53,6 +68,7 @@
       <button data-tab="summary" class="active">Summary</button>
       <button data-tab="transcript">Transcript</button>
       <button data-tab="glossary">Glossary</button>
+      <button data-tab="studio">Studio</button>
       <button data-tab="settings">Settings</button>
     </nav>
 
@@ -76,6 +92,22 @@
     <section id="glossary" class="tab-panel">
       <div id="glossaryEmpty" class="panel-empty"><b>No glossary yet</b><p>Technical names and consistent translations will appear after analysis.</p></div>
       <div id="glossaryList"></div>
+    </section>
+
+    <section id="studio" class="tab-panel studio-panel">
+      <div id="studioEmpty" class="panel-empty"><b>No publishing pack yet</b><p>Capture a transcript, choose a language, then create an infographic or report.</p></div>
+      <div id="studioContent" hidden>
+        <div class="section-title"><b>One-page infographic</b><span id="infographicMode">ACCURATE CANVAS</span></div>
+        <p class="studio-note">The default PNG uses AI-grounded copy with deterministic typography, so names and text stay readable.</p>
+        <img id="infographicPreview" class="infographic-preview" alt="Generated one-page video infographic" />
+        <div class="action-row artifact-actions"><button id="downloadInfographicButton" class="primary">Download PNG</button><button id="illustrateButton" class="secondary">AI illustrated version</button></div>
+        <label class="field"><span>GPT Image 2 quality <small>image cost varies</small></span><select id="imageQuality"><option value="low">Low · fast draft</option><option value="medium" selected>Medium · recommended</option><option value="high">High · final asset</option></select></label>
+        <p class="security-note warning">Illustrated mode uses GPT Image 2. Image models can still misspell or reposition text; use the accurate canvas PNG when wording must be exact.</p>
+
+        <div class="section-title"><b>Editorial report</b><span id="reportLanguage"></span></div>
+        <article id="reportPreview" class="report-preview"></article>
+        <div class="action-row artifact-actions"><button id="downloadMarkdownButton" class="primary">Download Markdown</button><button id="downloadHtmlButton" class="secondary">Download print HTML</button></div>
+      </div>
     </section>
 
     <section id="settings" class="tab-panel settings-panel">
@@ -112,7 +144,7 @@
         <option value="gpt-5.6-sol">GPT-5.6 Sol — Maximum quality · $5 / $30</option>
       </select></label>
       <p class="model-price-note">Prices shown as standard input / output USD per 1M short-context tokens. Check OpenAI pricing before production use.</p>
-      <label class="field"><span>Output language</span><select id="targetLanguage"><option>English</option><option>Japanese</option><option>Spanish</option><option>French</option><option>German</option><option>Portuguese</option></select></label>
+      <label class="field"><span>Output language</span><select id="targetLanguage"><option>Korean</option><option>English</option><option>Japanese</option><option>Chinese (Simplified)</option><option>Spanish</option><option>French</option><option>German</option><option>Portuguese</option></select></label>
       <label class="field"><span>Subtitle style</span><select id="translationStyle"><option value="natural broadcast subtitles">Natural broadcast</option><option value="concise two-line subtitles">Concise</option><option value="literal technical translation">Literal technical</option></select></label>
       <div class="action-row settings-actions"><button id="saveSettingsButton" class="primary">Save session</button><button id="testConnectionButton" class="secondary">Test connection</button></div>
       <button id="forgetSecretsButton" class="danger-link">Forget API key / token now</button>

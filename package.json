@@ -1,11 +1,11 @@
 {
   "name": "dukjin-global-english-companion",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "engines": { "node": ">=22" },
   "scripts": {
     "test": "node --test tests/*.test.mjs",
-    "check": "node --check background.js && node --check content.js && node --check sidepanel/sidepanel.js && node --check sidepanel/api-client.js && node --check proxy/server.mjs"
+    "check": "node --check background.js && node --check content.js && node --check sidepanel/sidepanel.js && node --check sidepanel/api-client.js && node --check sidepanel/artifacts.js && node --check proxy/server.mjs"
   }
 }

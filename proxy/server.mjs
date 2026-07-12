@@ -65,6 +65,15 @@ function sanitizeRequest(body) {
   };
 }
 
+function sanitizeImageRequest(body) {
+  if (body?.model !== "gpt-image-2") throw Object.assign(new Error("This proxy only allows GPT Image 2."), { status: 400 });
+  const prompt = String(body?.prompt || "").trim();
+  if (!prompt || prompt.length > 32_000) throw Object.assign(new Error("Image prompt must be between 1 and 32,000 characters."), { status: 400 });
+  const size = ["1024x1536", "1536x1024", "1024x1024"].includes(body?.size) ? body.size : "1024x1536";
+  const quality = ["low", "medium", "high"].includes(body?.quality) ? body.quality : "medium";
+  return { model: "gpt-image-2", prompt, size, quality, output_format: "png", n: 1 };
+}
+
 const server = createServer(async (request, response) => {
   const corsAllowed = applyCors(request, response);
   if (request.method === "OPTIONS") {
@@ -76,7 +85,9 @@ const server = createServer(async (request, response) => {
     json(response, 200, { ok: true, configured: Boolean(API_KEY), protected: Boolean(PROXY_TOKEN || ALLOWED_EXTENSION_ID) });
     return;
   }
-  if (request.method !== "POST" || request.url !== "/v1/responses") {
+  const isResponses = request.method === "POST" && request.url === "/v1/responses";
+  const isImageGeneration = request.method === "POST" && request.url === "/v1/images/generations";
+  if (!isResponses && !isImageGeneration) {
     json(response, 404, { error: { message: "Not found." } });
     return;
   }
@@ -93,8 +104,10 @@ const server = createServer(async (request, response) => {
     return;
   }
   try {
-    const body = sanitizeRequest(await readJson(request));
-    const upstream = await fetch("https://api.openai.com/v1/responses", {
+    const input = await readJson(request);
+    const body = isImageGeneration ? sanitizeImageRequest(input) : sanitizeRequest(input);
+    const upstreamPath = isImageGeneration ? "/v1/images/generations" : "/v1/responses";
+    const upstream = await fetch(`https://api.openai.com${upstreamPath}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${API_KEY}` },
       body: JSON.stringify(body)
