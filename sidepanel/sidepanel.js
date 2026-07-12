@@ -156,7 +156,8 @@ function updateModeFields() {
 function populateSettingsForm() {
   $("#connectionMode").value = settings.mode;
   $("#proxyEndpoint").value = settings.proxyEndpoint;
-  $("#model").value = settings.model;
+  $("#translationModel").value = settings.translationModel;
+  $("#analysisModel").value = settings.analysisModel;
   $("#targetLanguage").value = settings.targetLanguage;
   $("#translationStyle").value = settings.translationStyle;
   $("#apiKey").value = secrets.apiKey;
@@ -170,7 +171,8 @@ function readSettingsForm() {
     nextSettings: {
       mode: $("#connectionMode").value,
       proxyEndpoint: $("#proxyEndpoint").value,
-      model: $("#model").value,
+      translationModel: $("#translationModel").value,
+      analysisModel: $("#analysisModel").value,
       targetLanguage: $("#targetLanguage").value,
       translationStyle: $("#translationStyle").value
     },
@@ -187,7 +189,7 @@ async function saveSettingsFromForm() {
   }
   settings = await saveConnection(nextSettings, nextSecrets);
   secrets = nextSecrets;
-  setConnectionStatus(`${settings.mode === "proxy" ? "Secure proxy" : "Session key"} saved · ${settings.model}`, "success");
+  setConnectionStatus(`${settings.mode === "proxy" ? "Secure proxy" : "Session key"} saved · subtitles ${settings.translationModel} / summary ${settings.analysisModel}`, "success");
   return new OpenAIConnection(settings, secrets);
 }
 
@@ -255,8 +257,8 @@ async function analyzeVideo() {
       },
       provenance: {
         transcriptSource,
-        translationProvider: `OpenAI ${settings.model}`,
-        summaryProvider: `OpenAI ${settings.model}`,
+        translationProvider: `OpenAI ${settings.translationModel}`,
+        summaryProvider: `OpenAI ${settings.analysisModel}`,
         transcriptHash,
         generatedAt: new Date().toISOString(),
         reviewed: false
@@ -318,9 +320,9 @@ async function initialize() {
     updateTranscriptStatus();
     setConnectionStatus("Loaded a cached analysis for this video.", "success");
   } else if (settings.mode === "proxy") {
-    setConnectionStatus(`Proxy configured · ${settings.model}`);
+    setConnectionStatus(`Proxy configured · subtitles ${settings.translationModel} / summary ${settings.analysisModel}`);
   } else {
-    setConnectionStatus(`Session-key mode · ${settings.model}`);
+    setConnectionStatus(`Session-key mode · subtitles ${settings.translationModel} / summary ${settings.analysisModel}`);
   }
 }
 

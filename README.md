@@ -4,12 +4,13 @@
 
 한국어 YouTube 방송의 전사를 수집하고 원하는 언어로 자막을 번역한 뒤, 요약·키포인트·챕터·용어집을 생성하는 Chrome Manifest V3 확장 프로그램입니다. 특정 데모 영상에 종속되지 않습니다.
 
-## v0.2.0에서 실제로 동작하는 기능
+## v0.2.1에서 실제로 동작하는 기능
 
 - 현재 YouTube 영상과 SPA 재생목록 이동 감지
 - 열린 YouTube 스크립트 패널에서 전체 timed transcript 수집
 - 한국어 자막을 켜고 시청한 구간의 live cue 수집
-- GPT-5.6 Sol 기반 전체 요약·키포인트·챕터·용어집 생성
+- 번역과 요약에 서로 다른 GPT 모델을 선택하는 비용 최적화
+- 기본값: 자막 `gpt-5.4-mini`, 요약·챕터 `gpt-5.6-luna`
 - 45개 cue 단위 순차 번역과 진행률·취소 처리
 - 번역 자막을 플레이어 재생 시간에 동기화
 - 영상별 결과 로컬 캐시와 검색 가능한 한영 전사
@@ -20,7 +21,7 @@
 
 ## 다운로드와 설치
 
-1. GitHub Releases에서 `dukjin-global-extension-v0.2.0.zip`을 내려받아 압축을 풉니다.
+1. GitHub Releases에서 `dukjin-global-extension-v0.2.1.zip`을 내려받아 압축을 풉니다.
 2. Chrome 138 이상에서 `chrome://extensions`를 엽니다.
 3. **개발자 모드**를 켭니다.
 4. **압축해제된 확장 프로그램을 로드**하고 압축을 푼 폴더를 선택합니다.
@@ -61,7 +62,8 @@ npm run start:env
 - Connection mode: `Secure proxy`
 - Proxy endpoint: `http://localhost:8787/v1/responses`
 - Proxy token: 위에서 설정한 값
-- Model: `gpt-5.6-sol`
+- Subtitle model: `gpt-5.4-mini`
+- Summary model: `gpt-5.6-luna`
 
 공개 서버에 배포할 때는 반드시 `PROXY_TOKEN`, HTTPS, 사용량 제한, 인증을 추가하고 필요하면 `ALLOWED_EXTENSION_ID`를 설정하십시오.
 
@@ -76,10 +78,25 @@ npm run start:env
 
 다만 브라우저의 키는 완전한 보안 경계가 아닙니다. 전용 프로젝트 키, 제한된 권한, 낮은 월간 예산을 사용하고 공개 배포에서는 프록시 모드를 사용하십시오.
 
+## 모델 선택과 비용
+
+기본 설정은 호출 횟수가 많은 자막 번역에 `gpt-5.4-mini`, 한 번만 수행하는 요약·챕터 생성에 `gpt-5.6-luna`를 사용합니다. 가장 저렴하게 쓰려면 둘 다 5.4 mini로, 품질을 우선하면 Terra 또는 Sol로 변경할 수 있습니다.
+
+| 선택 모델 | 권장 용도 | 표준 입력 / 출력 가격* |
+| --- | --- | --- |
+| `gpt-5.4-mini` | 대량 자막, 최저 비용 | $0.75 / $4.50 |
+| `gpt-5.6-luna` | 균형형 요약 | $1.00 / $6.00 |
+| `gpt-5.4` | 강한 범용 작업 | $2.50 / $15.00 |
+| `gpt-5.6-terra` | 고품질 번역·요약 | $2.50 / $15.00 |
+| `gpt-5.5` | 프리미엄 | $5.00 / $30.00 |
+| `gpt-5.6-sol` | 최고 품질, 최고 비용 | $5.00 / $30.00 |
+
+\* 2026-07-12 공식 가격표의 short-context 기준 100만 토큰당 USD입니다. 최신 가격은 [OpenAI API Pricing](https://developers.openai.com/api/docs/pricing)을 확인하십시오.
+
 ## OpenAI 요청 구조
 
 - Responses API
-- 기본 모델 `gpt-5.6-sol`
+- 기본 자막 모델 `gpt-5.4-mini`, 기본 분석 모델 `gpt-5.6-luna`
 - strict JSON Schema structured outputs
 - 분석 요청 1회 + 자막 45개 단위 번역 요청
 - 입력은 사용자가 명시적으로 분석 버튼을 누른 영상 전사만 포함

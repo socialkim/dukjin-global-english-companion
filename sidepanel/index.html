@@ -94,7 +94,24 @@
         <p class="security-note warning">Use a dedicated restricted project key and a low spending limit. For public distribution, use the proxy mode.</p>
       </div>
 
-      <label class="field"><span>Model</span><input id="model" value="gpt-5.6-sol" /></label>
+      <div class="model-recommendation"><span>BALANCED DEFAULT</span><b>5.4 mini subtitles + 5.6 Luna summary</b><p>Bulk translation stays inexpensive while the single summary pass gets more nuance.</p></div>
+      <label class="field"><span>Subtitle translation model <small>many calls</small></span><select id="translationModel">
+        <option value="gpt-5.4-mini">GPT-5.4 mini — Lowest cost · $0.75 / $4.50</option>
+        <option value="gpt-5.6-luna">GPT-5.6 Luna — Efficient latest · $1 / $6</option>
+        <option value="gpt-5.4">GPT-5.4 — Strong general · $2.50 / $15</option>
+        <option value="gpt-5.6-terra">GPT-5.6 Terra — Higher quality · $2.50 / $15</option>
+        <option value="gpt-5.5">GPT-5.5 — Premium · $5 / $30</option>
+        <option value="gpt-5.6-sol">GPT-5.6 Sol — Maximum quality · $5 / $30</option>
+      </select></label>
+      <label class="field"><span>Summary & chapters model <small>one call</small></span><select id="analysisModel">
+        <option value="gpt-5.4-mini">GPT-5.4 mini — Lowest cost · $0.75 / $4.50</option>
+        <option value="gpt-5.6-luna" selected>GPT-5.6 Luna — Balanced default · $1 / $6</option>
+        <option value="gpt-5.4">GPT-5.4 — Strong general · $2.50 / $15</option>
+        <option value="gpt-5.6-terra">GPT-5.6 Terra — Higher quality · $2.50 / $15</option>
+        <option value="gpt-5.5">GPT-5.5 — Premium · $5 / $30</option>
+        <option value="gpt-5.6-sol">GPT-5.6 Sol — Maximum quality · $5 / $30</option>
+      </select></label>
+      <p class="model-price-note">Prices shown as standard input / output USD per 1M short-context tokens. Check OpenAI pricing before production use.</p>
       <label class="field"><span>Output language</span><select id="targetLanguage"><option>English</option><option>Japanese</option><option>Spanish</option><option>French</option><option>German</option><option>Portuguese</option></select></label>
       <label class="field"><span>Subtitle style</span><select id="translationStyle"><option value="natural broadcast subtitles">Natural broadcast</option><option value="concise two-line subtitles">Concise</option><option value="literal technical translation">Literal technical</option></select></label>
       <div class="action-row settings-actions"><button id="saveSettingsButton" class="primary">Save session</button><button id="testConnectionButton" class="secondary">Test connection</button></div>

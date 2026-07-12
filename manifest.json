@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Dukjin Global — AI Subtitle Companion",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "minimum_chrome_version": "138",
   "description": "Capture, translate, summarize and navigate Korean YouTube broadcasts with on-device AI or your own secure OpenAI connection.",
   "permissions": ["storage", "sidePanel"],

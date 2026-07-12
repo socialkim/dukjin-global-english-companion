@@ -5,9 +5,13 @@ import {
   buildPermissionOrigin,
   buildTranslationSchema,
   chunkCues,
+  DEFAULT_SETTINGS,
   extractOutputText,
   fingerprintTranscript,
   mergeTranslations,
+  migrateSettings,
+  MODEL_CATALOG,
+  OpenAIConnection,
   parseTimestamp
 } from "../sidepanel/api-client.js";
 
@@ -15,6 +19,51 @@ test("parses YouTube timestamps", () => {
   assert.equal(parseTimestamp("02:15"), 135000);
   assert.equal(parseTimestamp("1:02:03"), 3723000);
   assert.equal(parseTimestamp("bad"), null);
+});
+
+test("uses a cost-balanced default and exposes supported model choices", () => {
+  assert.equal(DEFAULT_SETTINGS.translationModel, "gpt-5.4-mini");
+  assert.equal(DEFAULT_SETTINGS.analysisModel, "gpt-5.6-luna");
+  assert.deepEqual(MODEL_CATALOG.map((model) => model.id), [
+    "gpt-5.4-mini", "gpt-5.6-luna", "gpt-5.4", "gpt-5.6-terra", "gpt-5.5", "gpt-5.6-sol"
+  ]);
+});
+
+test("migrates the old Sol default to the cheaper balanced pair", () => {
+  assert.deepEqual(
+    [migrateSettings({ model: "gpt-5.6-sol" }).translationModel, migrateSettings({ model: "gpt-5.6-sol" }).analysisModel],
+    ["gpt-5.4-mini", "gpt-5.6-luna"]
+  );
+  assert.deepEqual(
+    [migrateSettings({ model: "gpt-5.4" }).translationModel, migrateSettings({ model: "gpt-5.4" }).analysisModel],
+    ["gpt-5.4", "gpt-5.4"]
+  );
+});
+
+test("routes subtitles and analysis to their independently selected models", async () => {
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (_url, options) => {
+    const body = JSON.parse(options.body);
+    requests.push(body);
+    const result = body.text.format.name === "video_analysis"
+      ? { title: "Title", tldr: "Summary", keyPoints: [], chapters: [], glossary: [] }
+      : { translations: [{ id: "c1", text: "Hello" }] };
+    return { ok: true, json: async () => ({ output_text: JSON.stringify(result) }) };
+  };
+  try {
+    const client = new OpenAIConnection({
+      ...DEFAULT_SETTINGS,
+      mode: "direct",
+      translationModel: "gpt-5.4-mini",
+      analysisModel: "gpt-5.6-luna"
+    }, { apiKey: "test-key" });
+    await client.analyzeTranscript({ title: "영상", cues: [{ id: "c1", startMs: 0, ko: "안녕" }] });
+    await client.translateCues({ title: "영상", cues: [{ id: "c1", startMs: 0, ko: "안녕" }] });
+    assert.deepEqual(requests.map((request) => request.model), ["gpt-5.6-luna", "gpt-5.4-mini"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("builds Chrome host permission patterns without unsupported ports", () => {

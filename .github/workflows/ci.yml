@@ -15,8 +15,8 @@ jobs:
       - run: npm test
       - run: npm run check
       - run: node -e "JSON.parse(require('fs').readFileSync('manifest.json', 'utf8'))"
-      - run: zip -r dukjin-global-extension-v0.2.0.zip manifest.json background.js content.js sidepanel
+      - run: zip -r dukjin-global-extension-v0.2.1.zip manifest.json background.js content.js sidepanel
       - uses: actions/upload-artifact@v4
         with:
-          name: dukjin-global-extension-v0.2.0
-          path: dukjin-global-extension-v0.2.0.zip
+          name: dukjin-global-extension-v0.2.1
+          path: dukjin-global-extension-v0.2.1.zip

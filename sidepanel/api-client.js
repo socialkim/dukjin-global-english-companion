@@ -1,10 +1,22 @@
 export const DEFAULT_SETTINGS = Object.freeze({
   mode: "proxy",
   proxyEndpoint: "http://localhost:8787/v1/responses",
-  model: "gpt-5.6-sol",
+  translationModel: "gpt-5.4-mini",
+  analysisModel: "gpt-5.6-luna",
   targetLanguage: "English",
   translationStyle: "natural broadcast subtitles"
 });
+
+export const MODEL_CATALOG = Object.freeze([
+  { id: "gpt-5.4-mini", label: "GPT-5.4 mini", tier: "Lowest cost", input: 0.75, output: 4.5 },
+  { id: "gpt-5.6-luna", label: "GPT-5.6 Luna", tier: "Efficient latest", input: 1, output: 6 },
+  { id: "gpt-5.4", label: "GPT-5.4", tier: "Strong general", input: 2.5, output: 15 },
+  { id: "gpt-5.6-terra", label: "GPT-5.6 Terra", tier: "Higher quality", input: 2.5, output: 15 },
+  { id: "gpt-5.5", label: "GPT-5.5", tier: "Premium", input: 5, output: 30 },
+  { id: "gpt-5.6-sol", label: "GPT-5.6 Sol", tier: "Maximum quality", input: 5, output: 30 }
+]);
+
+const MODEL_IDS = new Set(MODEL_CATALOG.map((model) => model.id));
 
 const SETTINGS_KEY = "dukjinGlobalSettings";
 const SECRETS_KEY = "dukjinGlobalSessionSecrets";
@@ -101,11 +113,21 @@ export async function fingerprintTranscript(cues) {
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+export function migrateSettings(saved = {}) {
+  const legacyModel = MODEL_IDS.has(saved.model) && saved.model !== "gpt-5.6-sol" ? saved.model : "";
+  return {
+    ...DEFAULT_SETTINGS,
+    ...saved,
+    translationModel: MODEL_IDS.has(saved.translationModel) ? saved.translationModel : legacyModel || DEFAULT_SETTINGS.translationModel,
+    analysisModel: MODEL_IDS.has(saved.analysisModel) ? saved.analysisModel : legacyModel || DEFAULT_SETTINGS.analysisModel
+  };
+}
+
 export async function loadConnection() {
   const local = await chrome.storage.local.get(SETTINGS_KEY);
   const session = await chrome.storage.session.get(SECRETS_KEY);
   return {
-    settings: { ...DEFAULT_SETTINGS, ...(local[SETTINGS_KEY] || {}) },
+    settings: migrateSettings(local[SETTINGS_KEY]),
     secrets: { apiKey: "", proxyToken: "", ...(session[SECRETS_KEY] || {}) }
   };
 }
@@ -114,11 +136,12 @@ export async function saveConnection(settings, secrets) {
   const normalized = {
     mode: settings.mode === "direct" ? "direct" : "proxy",
     proxyEndpoint: String(settings.proxyEndpoint || DEFAULT_SETTINGS.proxyEndpoint).trim(),
-    model: String(settings.model || DEFAULT_SETTINGS.model).trim(),
+    translationModel: String(settings.translationModel || DEFAULT_SETTINGS.translationModel).trim(),
+    analysisModel: String(settings.analysisModel || DEFAULT_SETTINGS.analysisModel).trim(),
     targetLanguage: String(settings.targetLanguage || "English").trim(),
     translationStyle: String(settings.translationStyle || DEFAULT_SETTINGS.translationStyle).trim()
   };
-  if (!/^gpt-[a-z0-9.-]+$/i.test(normalized.model) && normalized.model !== "chat-latest") throw new Error("Enter a valid OpenAI model ID.");
+  if (!MODEL_IDS.has(normalized.translationModel) || !MODEL_IDS.has(normalized.analysisModel)) throw new Error("Choose a supported model from the list.");
   if (normalized.mode === "proxy") new URL(normalized.proxyEndpoint);
   await chrome.storage.local.set({ [SETTINGS_KEY]: normalized });
   await chrome.storage.session.set({ [SECRETS_KEY]: { apiKey: String(secrets.apiKey || "").trim(), proxyToken: String(secrets.proxyToken || "").trim() } });
@@ -161,9 +184,9 @@ export class OpenAIConnection {
     return data;
   }
 
-  async requestStructured({ name, schema, instructions, input, maxOutputTokens = 8000, signal }) {
+  async requestStructured({ model, name, schema, instructions, input, maxOutputTokens = 8000, signal }) {
     const response = await this.request({
-      model: this.settings.model,
+      model,
       reasoning: { effort: "low" },
       instructions,
       input,
@@ -177,7 +200,7 @@ export class OpenAIConnection {
 
   async test(signal) {
     const response = await this.request({
-      model: this.settings.model,
+      model: this.settings.translationModel,
       reasoning: { effort: "low" },
       instructions: "Return exactly the word READY.",
       input: "Connection test",
@@ -189,6 +212,7 @@ export class OpenAIConnection {
   async analyzeTranscript({ title, cues, signal }) {
     const transcript = cues.map((cue) => `${cue.id}\t${cue.startMs}\t${cue.ko}`).join("\n");
     return this.requestStructured({
+      model: this.settings.analysisModel,
       name: "video_analysis",
       schema: buildAnalysisSchema(),
       instructions: [
@@ -211,6 +235,7 @@ export class OpenAIConnection {
     for (let index = 0; index < batches.length; index += 1) {
       const batch = batches[index];
       const result = await this.requestStructured({
+        model: this.settings.translationModel,
         name: "subtitle_translation",
         schema: buildTranslationSchema(),
         instructions: [
