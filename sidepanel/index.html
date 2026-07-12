@@ -3,61 +3,195 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Dukjin Global</title>
+  <title>Dukjin Global Video Studio</title>
   <link rel="stylesheet" href="sidepanel.css" />
-  <link rel="stylesheet" href="live.css" />
 </head>
 <body>
-  <header>
+  <header class="app-header">
     <div class="logo">DG</div>
-    <div><b>Dukjin Global</b><small>ENGLISH COMPANION</small></div>
-    <span class="status"><i></i> ACTIVE</span>
+    <div><b>Dukjin Global</b><small>AI VIDEO STUDIO</small></div>
+    <span id="headerStatus" class="status"><i></i> READY</span>
   </header>
+
   <main>
     <section class="video-meta">
       <span id="sourceBadge">WAITING FOR YOUTUBE</span>
-      <h1 id="videoTitle">Open a Kim Dukjin video to begin.</h1>
-      <p id="videoTitleKo">The side panel will follow your active YouTube video.</p>
+      <h1 id="videoTitle">Open a Korean YouTube video.</h1>
+      <p id="videoTitleKo">The studio follows the active YouTube tab.</p>
     </section>
-    <section id="emptyState" class="empty">
-      <div>CC</div>
-      <h2>English, right beside the broadcast.</h2>
-      <p>For the full offline demo, open the included GPT-5 episode. Other videos can use Chrome's on-device language model when Korean captions are visible.</p>
-      <a href="https://www.youtube.com/watch?v=YTfathQEoXc" target="_blank">Open demo episode ↗</a>
-      <button id="liveAiButton" class="live-button">Start live on-device translation</button>
-      <div id="liveTranslation" class="live-translation" hidden><small>LIVE ENGLISH</small><b></b><span></span></div>
-    </section>
-    <section id="appState" hidden>
-      <div class="controls">
-        <label><input id="subtitleToggle" type="checkbox" checked /><span></span> English subtitles</label>
-        <button id="localAiButton">Check on-device AI</button>
+
+    <a id="videoPreview" class="video-preview" target="_blank" rel="noreferrer" hidden>
+      <img id="videoThumbnail" alt="Active YouTube video thumbnail" />
+      <span><small>ACTIVE YOUTUBE VIDEO</small><b>Open source video ↗</b></span>
+    </a>
+
+    <section class="mode-card" aria-labelledby="modeTitle">
+      <div class="mode-heading">
+        <div><small>STEP 1 · CHOOSE HOW AI RUNS</small><b id="modeTitle">Processing mode</b></div>
+        <span id="modeBadge">NO API KEY</span>
       </div>
-      <div id="modelStatus" class="model-status">Pre-generated demo · no data leaves your browser</div>
-      <nav class="tabs" aria-label="Content view">
-        <button data-tab="summary" class="active">Summary</button>
-        <button data-tab="transcript">Transcript</button>
-        <button data-tab="glossary">Glossary</button>
-      </nav>
-      <section id="summary" class="tab-panel active">
+      <div class="mode-switch" role="radiogroup" aria-label="Processing mode">
+        <button id="deviceModeButton" type="button" data-run-mode="device" role="radio" aria-checked="true">
+          <b>On-device</b><small>Private · no API key</small>
+        </button>
+        <button id="apiModeButton" type="button" data-run-mode="api" role="radio" aria-checked="false">
+          <b>OpenAI API</b><small>Full quality · usage cost</small>
+        </button>
+      </div>
+      <p id="modeDescription">Captions stay on this device. Chrome translates subtitles; the report and accurate canvas infographic use an extractive local brief.</p>
+      <div id="modeCapability" class="capability-list">
+        <span>✓ Player subtitles</span><span>✓ Local quick report</span><span>✓ Accurate canvas PNG</span><span class="limited">— No illustrated AI image</span>
+      </div>
+      <button id="openSettingsButton" type="button" class="mode-settings" hidden>Open API settings →</button>
+    </section>
+
+    <section class="workflow-card">
+      <div class="workflow-head">
+        <div><small>STEP 2 · SOURCE</small><b id="transcriptStatus">Transcript not captured</b></div>
+        <span id="cueCount">0 cues</span>
+      </div>
+      <p id="captureHelp">Downloads the video's complete YouTube caption track instantly. No playback or OpenAI API key is required.</p>
+      <div class="action-row">
+        <button id="captureButton" type="button" class="secondary">1. Fetch full transcript</button>
+        <button id="analyzeButton" type="button" class="primary" disabled>2. Run on device</button>
+      </div>
+      <button id="cancelButton" type="button" class="cancel" hidden>Cancel current job</button>
+      <div id="progressPanel" class="progress-panel" hidden>
+        <div><span id="progressLabel">Preparing…</span><b id="progressPercent">0%</b></div>
+        <progress id="analysisProgress" max="100" value="0"></progress>
+      </div>
+      <div id="connectionStatus" class="connection-status">On-device mode is selected. Capture a transcript to begin.</div>
+    </section>
+
+    <section class="subtitle-card">
+      <div>
+        <small>YOUTUBE PLAYER</small>
+        <b>Translated subtitle overlay</b>
+        <span id="subtitleStatus">On · waiting for translated cues</span>
+      </div>
+      <label class="switch-control" for="subtitleToggle">
+        <input id="subtitleToggle" type="checkbox" checked />
+        <span aria-hidden="true"></span>
+        <em>Player subtitles</em>
+      </label>
+    </section>
+
+    <section id="liveCard" class="live-card">
+      <div><small>ON-DEVICE LIVE</small><b>Translate visible Korean captions</b><span id="deviceModelHint">English language pack</span></div>
+      <button id="localAiButton" type="button">Prepare</button>
+      <div id="liveTranslation" class="live-translation" hidden><small>LIVE TRANSLATION</small><b></b><span></span></div>
+    </section>
+
+    <section class="studio-launch">
+      <div class="workflow-head"><div><small>STEP 3 · PUBLISH</small><b>Infographic & report</b></div><span id="studioModeBadge">ON-DEVICE</span></div>
+      <p id="studioModeHelp">Creates a private extractive report and an accurate typography-first PNG without an API key.</p>
+      <label class="studio-language"><span>Output language</span><select id="artifactLanguage"><option>Korean</option><option selected>English</option><option>Japanese</option><option>Chinese (Simplified)</option><option>Spanish</option><option>French</option><option>German</option><option>Portuguese</option></select></label>
+      <div class="action-row">
+        <button id="createInfographicButton" type="button" class="secondary" disabled>Create infographic</button>
+        <button id="createReportButton" type="button" class="secondary" disabled>Create report</button>
+      </div>
+    </section>
+
+    <nav class="tabs" aria-label="Content view">
+      <button type="button" data-tab="summary" class="active">Summary</button>
+      <button type="button" data-tab="transcript">Transcript</button>
+      <button type="button" data-tab="studio">Studio</button>
+      <button type="button" data-tab="settings">Settings</button>
+    </nav>
+
+    <section id="summary" class="tab-panel active">
+      <div id="summaryEmpty" class="panel-empty"><b>No analysis yet</b><p>Choose a processing mode, capture the transcript, then run step 2.</p></div>
+      <div id="summaryContent" hidden>
         <small class="label">TL;DR</small>
         <h2 id="tldr"></h2>
         <div class="section-title"><b>Key points</b><span id="keyPointCount"></span></div>
         <ol id="keyPoints" class="key-points"></ol>
         <div class="section-title"><b>Chapters</b></div>
         <div id="chapters" class="chapters"></div>
-      </section>
-      <section id="transcript" class="tab-panel">
-        <label class="search"><span>⌕</span><input id="transcriptSearch" placeholder="Search English transcript" /></label>
-        <div id="transcriptList" class="transcript-list"></div>
-      </section>
-      <section id="glossary" class="tab-panel">
-        <div class="glossary-row"><b>생태계</b><span>ecosystem</span><p>The network of models, apps, developers and distribution.</p></div>
-        <div class="glossary-row"><b>왕의 귀환</b><span>the king's return</span><p>A metaphor for reclaiming market leadership.</p></div>
-        <div class="glossary-row"><b>실사용</b><span>real-world use</span><p>Evaluation based on everyday workflows, not benchmarks.</p></div>
-      </section>
-      <footer><span>AI-generated</span> Verify names, numbers and product claims.<small>Built with Codex · Powered by ChatGPT 5.6sol</small></footer>
+        <div class="section-title"><b>Glossary</b></div>
+        <div id="glossaryEmpty" class="panel-empty compact"><b>No glossary in this mode</b><p>API mode can build a consistent technical glossary.</p></div>
+        <div id="glossaryList"></div>
+      </div>
     </section>
+
+    <section id="transcript" class="tab-panel">
+      <label class="search"><span>⌕</span><input id="transcriptSearch" placeholder="Search source or translated transcript" /></label>
+      <div id="transcriptList" class="transcript-list"></div>
+    </section>
+
+    <section id="studio" class="tab-panel studio-panel">
+      <div id="studioEmpty" class="panel-empty"><b>No publishing pack yet</b><p>Capture a transcript, choose a language, then create an infographic or report.</p></div>
+      <div id="studioContent" hidden>
+        <div class="section-title"><b>One-page infographic</b><span id="infographicMode">ACCURATE CANVAS</span></div>
+        <p class="studio-note">The accurate PNG uses deterministic typography. It is available in both modes.</p>
+        <img id="infographicPreview" class="infographic-preview" alt="Generated one-page video infographic" />
+        <div class="action-row artifact-actions"><button id="downloadInfographicButton" type="button" class="primary">Download PNG</button><button id="illustrateButton" type="button" class="secondary">AI illustrated version</button></div>
+        <div id="imageApiOptions">
+          <label class="field"><span>GPT Image 2 quality <small>image cost varies</small></span><select id="imageQuality"><option value="low">Low · fast draft</option><option value="medium" selected>Medium · recommended</option><option value="high">High · final asset</option></select></label>
+          <p class="security-note warning">Illustrated mode requires OpenAI API mode. Generated images can misspell text; use the accurate canvas PNG when wording must be exact.</p>
+        </div>
+
+        <div class="section-title"><b>Editorial report</b><span id="reportLanguage"></span></div>
+        <article id="reportPreview" class="report-preview"></article>
+        <div class="action-row artifact-actions"><button id="downloadMarkdownButton" type="button" class="primary">Download Markdown</button><button id="downloadHtmlButton" type="button" class="secondary">Download print HTML</button></div>
+      </div>
+    </section>
+
+    <section id="settings" class="tab-panel settings-panel">
+      <div class="settings-hero">
+        <small>SETTINGS</small>
+        <h2 id="settingsTitle">On-device mode</h2>
+        <p id="settingsIntro">No API key is used. Chrome may download a local language pack after you approve it.</p>
+      </div>
+
+      <div id="deviceSettings">
+        <div class="settings-summary good">
+          <b>What works without an API key</b>
+          <p>Live subtitles, full captured-transcript translation, a basic extractive summary, a local report and an accurate canvas infographic.</p>
+        </div>
+        <div class="settings-summary limited">
+          <b>What needs OpenAI API mode</b>
+          <p>Nuanced generative analysis, a technical glossary, stronger editorial structure and GPT Image 2 illustrated infographics.</p>
+        </div>
+        <button id="switchToApiButton" type="button" class="primary wide">Switch to OpenAI API mode</button>
+      </div>
+
+      <div id="apiSettings" hidden>
+        <div class="section-title"><b>API connection</b><span>BYOK</span></div>
+        <label class="field"><span>Connection method</span><select id="connectionMode"><option value="proxy">Secure proxy · recommended</option><option value="direct">Personal session key · advanced</option></select></label>
+
+        <div id="proxyFields">
+          <label class="field"><span>Proxy Responses endpoint</span><input id="proxyEndpoint" type="url" placeholder="http://localhost:8787/v1/responses" /></label>
+          <label class="field"><span>Proxy token <small>session only</small></span><input id="proxyToken" type="password" autocomplete="off" placeholder="Optional shared secret" /></label>
+          <p class="security-note good">Recommended: the proxy keeps <code>OPENAI_API_KEY</code> outside Chrome. A ready-to-run proxy is included in the repository.</p>
+        </div>
+
+        <div id="directFields" hidden>
+          <label class="field"><span>OpenAI API key <small>Chrome session only</small></span><input id="apiKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-…" /></label>
+          <label class="consent"><input id="directConsent" type="checkbox" /> I understand that a browser-held API key is for personal testing only and is not recommended for public distribution.</label>
+          <p class="security-note warning">Use a dedicated restricted project key and a low spending limit. The key is stored in <code>chrome.storage.session</code> and cleared when Chrome exits.</p>
+        </div>
+
+        <div class="model-recommendation"><span>BALANCED DEFAULT</span><b>5.4 mini subtitles + 5.6 Luna analysis</b><p>Bulk translation stays inexpensive while the single analysis pass gets more nuance.</p></div>
+        <label class="field"><span>Subtitle translation model <small>many calls</small></span><select id="translationModel">
+          <option value="gpt-5.4-mini">GPT-5.4 mini · lowest cost</option><option value="gpt-5.6-luna">GPT-5.6 Luna · efficient latest</option><option value="gpt-5.4">GPT-5.4 · strong general</option><option value="gpt-5.6-terra">GPT-5.6 Terra · higher quality</option><option value="gpt-5.5">GPT-5.5 · premium</option><option value="gpt-5.6-sol">GPT-5.6 Sol · maximum quality</option>
+        </select></label>
+        <label class="field"><span>Analysis model <small>summary, report, infographic plan</small></span><select id="analysisModel">
+          <option value="gpt-5.4-mini">GPT-5.4 mini · lowest cost</option><option value="gpt-5.6-luna" selected>GPT-5.6 Luna · balanced default</option><option value="gpt-5.4">GPT-5.4 · strong general</option><option value="gpt-5.6-terra">GPT-5.6 Terra · higher quality</option><option value="gpt-5.5">GPT-5.5 · premium</option><option value="gpt-5.6-sol">GPT-5.6 Sol · maximum quality</option>
+        </select></label>
+        <p class="model-price-note">Model pricing and availability can change. Check the OpenAI model and pricing pages before production use.</p>
+        <label class="field"><span>Subtitle style</span><select id="translationStyle"><option value="natural broadcast subtitles">Natural broadcast</option><option value="concise two-line subtitles">Concise</option><option value="literal technical translation">Literal technical</option></select></label>
+        <div class="action-row settings-actions"><button id="saveSettingsButton" type="button" class="primary">Save session</button><button id="testConnectionButton" type="button" class="secondary">Test connection</button></div>
+        <button id="forgetSecretsButton" type="button" class="danger-link">Forget API key / token now</button>
+      </div>
+
+      <label class="field"><span>Output language</span><select id="targetLanguage"><option>Korean</option><option>English</option><option>Japanese</option><option>Chinese (Simplified)</option><option>Spanish</option><option>French</option><option>German</option><option>Portuguese</option></select></label>
+      <p class="settings-footnote">Transcripts are sent to OpenAI only when API mode is selected and you explicitly run a job. On-device mode keeps transcript processing inside Chrome.</p>
+    </section>
+
+    <div class="utility-row"><button id="clearVideoButton" type="button">Clear this video's cache</button></div>
+    <footer><span>AI-generated</span> Verify names, numbers and product claims.<small>Built with Codex · Powered by ChatGPT 5.6 Sol</small></footer>
   </main>
-  <script src="sidepanel.js"></script>
+  <script type="module" src="sidepanel.js"></script>
 </body>
 </html>

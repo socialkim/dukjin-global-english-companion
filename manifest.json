@@ -1,10 +1,20 @@
 {
   "manifest_version": 3,
-  "name": "Dukjin Global — English Companion",
-  "version": "0.1.0",
+  "name": "Dukjin Global — AI Video Studio",
+  "version": "0.5.0",
   "minimum_chrome_version": "138",
-  "description": "English subtitles, summaries and transcripts for Kim Dukjin's Korean AI broadcasts.",
-  "permissions": ["storage", "sidePanel"],
+  "description": "Choose private on-device or OpenAI API processing for multilingual YouTube subtitles, one-page infographics and reports.",
+  "permissions": ["storage", "sidePanel", "scripting"],
+  "host_permissions": [
+    "https://api.openai.com/*",
+    "https://www.youtube.com/*",
+    "https://youtube.com/*"
+  ],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
   "background": {
     "service_worker": "background.js",
     "type": "module"

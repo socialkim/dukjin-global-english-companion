@@ -1,107 +1,284 @@
-const DEMO_CATALOG = {
-  YTfathQEoXc: {
-    video: {
-      id: "YTfathQEoXc",
-      titleKo: "GPT-5 출시 준비하는 오픈AI, 왕의 귀환이 임박했습니다",
-      titleEn: "OpenAI prepares GPT-5: is the king about to return?",
-      publishedAt: "2025-08-04",
-      durationMs: 1143000
-    },
-    transcript: {
-      language: "ko",
-      complete: false,
-      cues: [
-        { id: "c1", startMs: 0, endMs: 11000, ko: "오늘은 GPT-5를 준비하는 오픈AI의 이야기를 해보겠습니다.", en: "Today, we're looking at OpenAI as it prepares GPT-5.", source: "mock", confidence: 0.94 },
-        { id: "c2", startMs: 11000, endMs: 24000, ko: "시장에서는 다시 한 번 왕의 귀환이 가능할지 주목하고 있습니다.", en: "The market is asking whether the former leader can make a comeback.", source: "mock", confidence: 0.92 },
-        { id: "c3", startMs: 24000, endMs: 39000, ko: "하지만 이제 모델 성능 하나만으로 승부가 결정되지는 않습니다.", en: "But model performance alone no longer decides the winner.", source: "mock", confidence: 0.96 },
-        { id: "c4", startMs: 39000, endMs: 55000, ko: "비용과 인프라, 그리고 서비스를 얼마나 안정적으로 제공하는지도 중요합니다.", en: "Cost, infrastructure and reliable delivery matter just as much.", source: "mock", confidence: 0.95 },
-        { id: "c5", startMs: 55000, endMs: 72000, ko: "구글과 앤스로픽의 추격도 이전과는 비교할 수 없을 만큼 빨라졌습니다.", en: "Google and Anthropic are now closing the gap faster than ever.", source: "mock", confidence: 0.93 },
-        { id: "c6", startMs: 72000, endMs: 92000, ko: "결국 사용자가 실제 업무에서 어떤 차이를 느끼는지가 핵심입니다.", en: "What matters is the difference users feel in real work.", source: "mock", confidence: 0.95 },
-        { id: "c7", startMs: 92000, endMs: 112000, ko: "출시 전 기대와 출시 후 평가는 분리해서 볼 필요가 있습니다.", en: "Pre-launch expectations must be separated from post-launch reality.", source: "mock", confidence: 0.97 },
-        { id: "c8", startMs: 112000, endMs: 132000, ko: "GPT-5는 기술 경쟁뿐 아니라 오픈AI의 사업 지속성을 시험하게 됩니다.", en: "GPT-5 will test OpenAI's business durability as well as its technology.", source: "mock", confidence: 0.91 },
-        { id: "c9", startMs: 132000, endMs: 154000, ko: "생태계와 배포력이 모델 점수만큼 중요해지는 시점입니다.", en: "Ecosystem and distribution are becoming as important as benchmark scores.", source: "mock", confidence: 0.94 },
-        { id: "c10", startMs: 154000, endMs: 180000, ko: "그래서 저는 왕의 귀환 여부를 실사용 데이터로 판단해야 한다고 봅니다.", en: "That is why the comeback should be judged by real usage data.", source: "mock", confidence: 0.94 }
-      ]
-    },
-    english: {
-      summary: {
-        tldr: "OpenAI's next model may restore technical momentum, but durable leadership now depends on cost, infrastructure, distribution and real-world value.",
-        keyPoints: [
-          { text: "Model quality alone no longer guarantees market leadership.", startMs: 24000 },
-          { text: "Infrastructure cost and reliable delivery are becoming decisive.", startMs: 39000 },
-          { text: "Google and Anthropic have accelerated the competitive cycle.", startMs: 55000 },
-          { text: "Post-launch usage is a better test than pre-launch expectations.", startMs: 92000 }
-        ],
-        chapters: [
-          { title: "Why GPT-5 matters", startMs: 0 },
-          { title: "The new leadership test", startMs: 24000 },
-          { title: "Competition and distribution", startMs: 55000 },
-          { title: "What to watch after launch", startMs: 92000 }
-        ]
-      }
-    },
-    provenance: {
-      transcriptSource: "bundled product demo",
-      translationProvider: "editorial demo",
-      summaryProvider: "editorial demo",
-      generatedAt: "2026-07-12T00:00:00Z",
-      reviewed: false
-    }
-  }
-};
+import { parseJson3Transcript, parseTimedTextXml, selectCaptionTrack } from "./caption-utils.js";
+
+const MAX_CUES = 5000;
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
+  chrome.storage.local.get("subtitlesEnabled").then(({ subtitlesEnabled }) => {
+    if (typeof subtitlesEnabled !== "boolean") chrome.storage.local.set({ subtitlesEnabled: true });
+  });
 });
 
-async function saveActiveContext(context, tabId) {
-  const safe = {
-    videoId: String(context.videoId || "").slice(0, 20),
-    title: String(context.title || "").slice(0, 300),
-    durationMs: Number(context.durationMs) || 0,
+function cleanText(value, max = 1000) {
+  return String(value || "").replace(/\s+/g, " ").trim().slice(0, max);
+}
+
+function cleanCue(cue, index = 0) {
+  const startMs = Math.max(0, Math.round(Number(cue?.startMs) || 0));
+  const endMs = Math.max(startMs + 500, Math.round(Number(cue?.endMs) || startMs + 5000));
+  return {
+    id: cleanText(cue?.id, 80) || `cue-${index}-${startMs}`,
+    startMs,
+    endMs,
+    ko: cleanText(cue?.ko),
+    en: cleanText(cue?.en),
+    source: cleanText(cue?.source, 40) || "youtube-dom"
+  };
+}
+
+async function getActiveContext() {
+  const { activeContext } = await chrome.storage.local.get("activeContext");
+  return activeContext || null;
+}
+
+async function saveActiveContext(payload, tabId) {
+  const context = {
+    videoId: cleanText(payload?.videoId, 20),
+    title: cleanText(payload?.title, 300),
+    durationMs: Math.max(0, Math.round(Number(payload?.durationMs) || 0)),
     tabId,
     updatedAt: Date.now()
   };
-  await chrome.storage.local.set({ activeContext: safe });
-  return safe;
+  await chrome.storage.local.set({ activeContext: context });
+  return context;
+}
+
+async function getLocalization(videoId) {
+  if (!videoId) return null;
+  const key = `localization:${videoId}`;
+  const result = await chrome.storage.local.get(key);
+  return result[key] || null;
+}
+
+async function appendLiveCue(payload) {
+  const videoId = cleanText(payload?.videoId, 20);
+  const ko = cleanText(payload?.ko, 500);
+  if (!videoId || !ko) return;
+  const key = `liveTranscript:${videoId}`;
+  const result = await chrome.storage.local.get(key);
+  const cues = Array.isArray(result[key]) ? result[key] : [];
+  const previous = cues.at(-1);
+  const startMs = Math.max(0, Math.round(Number(payload?.timeMs) || 0));
+  if (previous?.ko === ko && startMs - previous.startMs < 8000) return;
+  cues.push(cleanCue({ id: `live-${startMs}`, startMs, endMs: startMs + 6500, ko, source: "youtube-live" }, cues.length));
+  await chrome.storage.local.set({ [key]: cues.slice(-MAX_CUES) });
+}
+
+async function requestTranscriptFromPage(tabId) {
+  if (!tabId) return { ok: false, reason: "no-active-youtube-tab", cues: [] };
+  try {
+    const existing = await chrome.tabs.sendMessage(tabId, { type: "CAPTURE_TRANSCRIPT" });
+    if (existing?.cues?.length) return { ...existing, autoOpened: false };
+
+    const [{ result: opened } = {}] = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: "MAIN",
+      func: async () => {
+        const segmentSelector = [
+          "ytd-transcript-segment-renderer",
+          "transcript-segment-view-model",
+          "[class*='TranscriptSegmentViewModel'][role='button']",
+          "[class*='transcript-segment'][role='button']"
+        ].join(",");
+        if (document.querySelector(segmentSelector)) return true;
+
+        const expand = document.querySelector("ytd-text-inline-expander #expand, #description #expand");
+        if (expand instanceof HTMLElement) expand.click();
+        await new Promise((resolve) => setTimeout(resolve, 250));
+
+        const transcriptButton = document.querySelector(
+          "ytd-video-description-transcript-section-renderer button, button[aria-label='Show transcript']"
+        );
+        if (!(transcriptButton instanceof HTMLElement)) return false;
+        transcriptButton.click();
+
+        const deadline = Date.now() + 6000;
+        while (Date.now() < deadline) {
+          if (document.querySelector(segmentSelector)) return true;
+          await new Promise((resolve) => setTimeout(resolve, 150));
+        }
+        return false;
+      }
+    });
+    if (!opened) return existing;
+    const captured = await chrome.tabs.sendMessage(tabId, { type: "CAPTURE_TRANSCRIPT" });
+    return { ...captured, autoOpened: Boolean(captured?.cues?.length) };
+  } catch {
+    return { ok: false, reason: "content-script-unavailable", cues: [] };
+  }
+}
+
+async function readCaptionTracks(tabId) {
+  if (!tabId) return [];
+  try {
+    const [{ result } = {}] = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: "MAIN",
+      func: () => {
+        const parse = (value) => {
+          if (!value) return null;
+          if (typeof value === "object") return value;
+          try { return JSON.parse(value); } catch { return null; }
+        };
+        const player = document.getElementById("movie_player");
+        const candidates = [
+          player?.getPlayerResponse?.(),
+          window.ytInitialPlayerResponse,
+          parse(window.ytplayer?.config?.args?.player_response)
+        ];
+        for (const response of candidates) {
+          const tracks = response?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+          if (Array.isArray(tracks) && tracks.length) {
+            return tracks.map((track) => ({
+              baseUrl: track.baseUrl,
+              languageCode: track.languageCode,
+              kind: track.kind || "",
+              vssId: track.vssId || "",
+              isTranslatable: Boolean(track.isTranslatable),
+              name: track.name || null
+            }));
+          }
+        }
+        return [];
+      }
+    });
+    return Array.isArray(result) ? result : [];
+  } catch {
+    return [];
+  }
+}
+
+async function downloadCaptionTrack(track) {
+  const jsonUrl = new URL(track.baseUrl);
+  jsonUrl.searchParams.set("fmt", "json3");
+  try {
+    const response = await fetch(jsonUrl, { credentials: "include", cache: "no-store" });
+    if (!response.ok) throw new Error(`caption-http-${response.status}`);
+    const cues = parseJson3Transcript(await response.json());
+    if (cues.length) return cues;
+  } catch {
+    // Older or restricted tracks can still expose the timed-text XML representation.
+  }
+  const xmlUrl = new URL(track.baseUrl);
+  xmlUrl.searchParams.delete("fmt");
+  const response = await fetch(xmlUrl, { credentials: "include", cache: "no-store" });
+  if (!response.ok) throw new Error(`caption-http-${response.status}`);
+  return parseTimedTextXml(await response.text());
+}
+
+async function requestInstantTranscript(context, preferredLanguage = "ko") {
+  if (!context?.tabId) return { ok: false, reason: "no-active-youtube-tab", cues: [] };
+  const tracks = await readCaptionTracks(context.tabId);
+  if (!tracks.length) return { ok: false, reason: "youtube-caption-track-not-found", cues: [] };
+  const track = selectCaptionTrack(tracks, preferredLanguage);
+  if (!track) return { ok: false, reason: "preferred-caption-track-not-found", cues: [] };
+  try {
+    const cues = (await downloadCaptionTrack(track)).slice(0, MAX_CUES).map(cleanCue).filter((cue) => cue.ko);
+    return {
+      ok: cues.length > 0,
+      cues,
+      reason: cues.length ? "" : "youtube-caption-track-empty",
+      source: "youtube-caption-track",
+      instant: true,
+      track: { languageCode: track.languageCode, label: track.label, kind: track.kind || "manual" }
+    };
+  } catch (error) {
+    return { ok: false, reason: cleanText(error?.message, 120) || "youtube-caption-download-failed", cues: [] };
+  }
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || typeof message.type !== "string") return;
 
   if (message.type === "VIDEO_CONTEXT_CHANGED") {
-    const videoId = String(message.payload?.videoId || "");
-    saveActiveContext(message.payload || {}, sender.tab?.id).then(async (context) => {
-      const localization = DEMO_CATALOG[videoId] || null;
-      if (sender.tab?.id && localization) {
+    saveActiveContext(message.payload, sender.tab?.id).then(async (context) => {
+      const localization = await getLocalization(context.videoId);
+      const { subtitlesEnabled = true } = await chrome.storage.local.get("subtitlesEnabled");
+      if (localization && sender.tab?.id) {
         await chrome.tabs.sendMessage(sender.tab.id, { type: "LOCALIZATION_READY", payload: localization }).catch(() => {});
       }
-      sendResponse({ ok: true, context, localization });
+      if (sender.tab?.id) {
+        await chrome.tabs.sendMessage(sender.tab.id, { type: "SET_SUBTITLES", payload: { enabled: subtitlesEnabled } }).catch(() => {});
+      }
+      sendResponse({ ok: true, context, localization, subtitlesEnabled });
     });
     return true;
   }
 
   if (message.type === "REQUEST_ACTIVE_VIDEO") {
-    chrome.storage.local.get("activeContext").then(({ activeContext }) => {
-      const localization = activeContext?.videoId ? DEMO_CATALOG[activeContext.videoId] || null : null;
-      sendResponse({ context: activeContext || null, localization });
+    getActiveContext().then(async (context) => {
+      const { subtitlesEnabled = true } = await chrome.storage.local.get("subtitlesEnabled");
+      sendResponse({ context, localization: await getLocalization(context?.videoId), subtitlesEnabled });
     });
     return true;
   }
 
-  if (message.type === "SEEK_TO") {
-    chrome.storage.local.get("activeContext").then(({ activeContext }) => {
-      if (activeContext?.tabId) {
-        chrome.tabs.sendMessage(activeContext.tabId, { type: "SEEK_TO", payload: { timeMs: Number(message.payload?.timeMs) || 0 } }).catch(() => {});
+  if (message.type === "REQUEST_TRANSCRIPT") {
+    getActiveContext().then(async (context) => {
+      const instantResult = await requestInstantTranscript(context, message.payload?.preferredLanguage || "ko");
+      if (instantResult.cues?.length) {
+        sendResponse({ ...instantResult, context });
+        return;
       }
-      sendResponse({ ok: true });
+      const pageResult = await requestTranscriptFromPage(context?.tabId);
+      if (pageResult?.cues?.length) {
+        sendResponse({
+          ...pageResult,
+          context,
+          source: pageResult.autoOpened ? "youtube-transcript-panel-auto" : "youtube-transcript-panel",
+          instant: Boolean(pageResult.autoOpened),
+          track: pageResult.autoOpened ? { languageCode: "ko", label: "YouTube transcript", kind: "panel" } : undefined
+        });
+        return;
+      }
+      const key = `liveTranscript:${context?.videoId || ""}`;
+      const stored = await chrome.storage.local.get(key);
+      const liveCues = Array.isArray(stored[key]) ? stored[key] : [];
+      sendResponse({
+        ok: liveCues.length > 0,
+        context,
+        cues: liveCues,
+        source: "watched-live-captions",
+        reason: pageResult?.reason || instantResult.reason || "transcript-panel-not-open"
+      });
+    });
+    return true;
+  }
+
+  if (message.type === "PUBLISH_LOCALIZATION") {
+    getActiveContext().then(async (context) => {
+      const payload = message.payload;
+      if (!payload?.video?.id || payload.video.id !== context?.videoId) {
+        sendResponse({ ok: false, reason: "video-context-mismatch" });
+        return;
+      }
+      const cues = (payload.transcript?.cues || []).slice(0, MAX_CUES).map(cleanCue).filter((cue) => cue.ko || cue.en);
+      const localization = { ...payload, transcript: { ...payload.transcript, cues } };
+      await chrome.storage.local.set({ [`localization:${context.videoId}`]: localization });
+      if (context.tabId) await chrome.tabs.sendMessage(context.tabId, { type: "LOCALIZATION_READY", payload: localization }).catch(() => {});
+      sendResponse({ ok: true, cueCount: cues.length });
     });
     return true;
   }
 
   if (message.type === "SET_SUBTITLES") {
-    chrome.storage.local.get("activeContext").then(({ activeContext }) => {
-      if (activeContext?.tabId) chrome.tabs.sendMessage(activeContext.tabId, message).catch(() => {});
+    const enabled = Boolean(message.payload?.enabled);
+    chrome.storage.local.set({ subtitlesEnabled: enabled }).then(async () => {
+      const context = await getActiveContext();
+      let delivered = false;
+      if (context?.tabId) {
+        delivered = await chrome.tabs.sendMessage(context.tabId, { type: "SET_SUBTITLES", payload: { enabled } })
+          .then(() => true)
+          .catch(() => false);
+      }
+      sendResponse({ ok: true, enabled, delivered });
+    });
+    return true;
+  }
+
+  if (message.type === "SEEK_TO" || message.type === "RENDER_LIVE_CUE") {
+    getActiveContext().then(async (context) => {
+      if (context?.tabId) await chrome.tabs.sendMessage(context.tabId, message).catch(() => {});
       sendResponse({ ok: true });
     });
     return true;
@@ -109,13 +286,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === "CAPTION_OBSERVED") {
     const latestCaption = { ...message.payload, capturedAt: Date.now() };
+    appendLiveCue(latestCaption);
     chrome.storage.local.set({ latestCaption });
     chrome.runtime.sendMessage({ type: "LIVE_CAPTION", payload: latestCaption }).catch(() => {});
   }
 
-  if (message.type === "RENDER_LIVE_CUE") {
-    chrome.storage.local.get("activeContext").then(({ activeContext }) => {
-      if (activeContext?.tabId) chrome.tabs.sendMessage(activeContext.tabId, message).catch(() => {});
+  if (message.type === "CLEAR_VIDEO_DATA") {
+    getActiveContext().then(async (context) => {
+      if (context?.videoId) await chrome.storage.local.remove([`localization:${context.videoId}`, `liveTranscript:${context.videoId}`]);
       sendResponse({ ok: true });
     });
     return true;
