@@ -17,6 +17,12 @@ import {
   renderInfographicCanvas,
   slugify
 } from "./artifacts.js";
+import {
+  analysisFromLocalPack,
+  buildLocalPublishingPack,
+  languageCode,
+  translateObjectStrings
+} from "./on-device.js";
 
 const $ = (selector) => document.querySelector(selector);
 let context = null;
@@ -26,6 +32,7 @@ let transcriptSource = "";
 let settings = { ...DEFAULT_SETTINGS };
 let secrets = { apiKey: "", proxyToken: "" };
 let translator = null;
+let translatorLanguage = "";
 let translationQueue = Promise.resolve();
 let lastObservedKey = "";
 let currentAbort = null;
@@ -58,13 +65,73 @@ function setProgress(percent, label) {
   $("#progressLabel").textContent = label;
 }
 
+function isApiMode() {
+  return settings.runMode === "api";
+}
+
+function modeCapabilityMarkup() {
+  if (isApiMode()) {
+    return "<span>✓ Nuanced summary</span><span>✓ Full report</span><span>✓ Accurate canvas PNG</span><span>✓ GPT Image illustration</span>";
+  }
+  return "<span>✓ Player subtitles</span><span>✓ Local quick report</span><span>✓ Accurate canvas PNG</span><span class='limited'>— No illustrated AI image</span>";
+}
+
+function updateRunModeUi({ announce = false } = {}) {
+  const api = isApiMode();
+  $("#deviceModeButton").setAttribute("aria-checked", String(!api));
+  $("#apiModeButton").setAttribute("aria-checked", String(api));
+  $("#modeBadge").textContent = api ? "API REQUIRED" : "NO API KEY";
+  $("#modeDescription").textContent = api
+    ? "The captured transcript is sent only when you run a job. OpenAI creates nuanced summaries, multilingual subtitles, full reports and optional GPT Image illustrations."
+    : "Captions stay on this device. Chrome translates subtitles; the report and accurate canvas infographic use an extractive local brief.";
+  $("#modeCapability").innerHTML = modeCapabilityMarkup();
+  $("#openSettingsButton").hidden = !api;
+  $("#analyzeButton").textContent = api ? "2. Translate + analyze" : "2. Run on device";
+  $("#studioModeBadge").textContent = api ? "OPENAI API" : "ON-DEVICE";
+  $("#studioModeHelp").textContent = api
+    ? "Creates a generative editorial report and infographic plan. The illustrated version uses GPT Image 2."
+    : "Creates a private extractive report and an accurate typography-first PNG without an API key.";
+  $("#imageApiOptions").hidden = !api;
+  $("#settingsTitle").textContent = api ? "OpenAI API mode" : "On-device mode";
+  $("#settingsIntro").textContent = api
+    ? "Configure a secure proxy or a personal Chrome-session API key."
+    : "No API key is used. Chrome may download a local language pack after you approve it.";
+  $("#deviceSettings").hidden = api;
+  $("#apiSettings").hidden = !api;
+  $("#liveCard").hidden = api;
+  $("#illustrateButton").textContent = api ? "AI illustrated version" : "API mode required";
+  $("#illustrateButton").disabled = !api || !publishingPack || Boolean(currentAbort);
+  $("#deviceModelHint").textContent = `${$("#artifactLanguage").value} language pack`;
+  if (announce) {
+    setConnectionStatus(api
+      ? "OpenAI API mode selected. Open Settings to configure a connection before running analysis."
+      : "On-device mode selected. No API key is required; prepare Chrome's language pack if translation is needed.");
+  }
+}
+
+async function setRunMode(mode, { openSettings = false } = {}) {
+  const next = mode === "api" ? "api" : "device";
+  if (settings.runMode !== next) {
+    settings = await saveConnection({ ...settings, runMode: next }, secrets);
+    resetPublishingPack();
+  }
+  updateRunModeUi({ announce: true });
+  if (openSettings) {
+    switchTab("settings");
+    $("#settings").scrollIntoView({ block: "start" });
+  }
+}
+
 function setBusy(busy) {
+  $("#deviceModeButton").disabled = busy;
+  $("#apiModeButton").disabled = busy;
+  $("#artifactLanguage").disabled = busy;
   $("#captureButton").disabled = busy;
   $("#analyzeButton").disabled = busy || capturedCues.length === 0;
   $("#cancelButton").hidden = !busy;
   $("#createInfographicButton").disabled = busy || capturedCues.length === 0;
   $("#createReportButton").disabled = busy || capturedCues.length === 0;
-  $("#illustrateButton").disabled = busy || !publishingPack;
+  $("#illustrateButton").disabled = busy || !publishingPack || !isApiMode();
   if (!busy) currentAbort = null;
 }
 
@@ -132,7 +199,11 @@ function renderLocalization(payload) {
     return;
   }
   capturedCues = payload.transcript?.cues || capturedCues;
-  $("#sourceBadge").textContent = payload.provenance?.reviewed ? "CREATOR REVIEWED" : `${payload.english?.language || "AI"} · AI GENERATED`;
+  $("#sourceBadge").textContent = payload.provenance?.reviewed
+    ? "CREATOR REVIEWED"
+    : payload.provenance?.runMode === "device"
+      ? `${payload.english?.language || "AI"} · ON-DEVICE`
+      : `${payload.english?.language || "AI"} · OPENAI API`;
   $("#videoTitle").textContent = payload.video?.titleEn || context?.title || "Analyzed video";
   $("#videoTitleKo").textContent = payload.video?.titleKo || context?.title || "";
   $("#summaryEmpty").hidden = true;
@@ -228,10 +299,10 @@ function renderPublishingPack(pack, language) {
   $("#studioEmpty").hidden = true;
   $("#studioContent").hidden = false;
   $("#infographicPreview").src = activeInfographicDataUrl;
-  $("#infographicMode").textContent = "ACCURATE CANVAS";
+  $("#infographicMode").textContent = isApiMode() ? "ACCURATE CANVAS" : "ON-DEVICE CANVAS";
   $("#reportLanguage").textContent = language.toUpperCase();
-  $("#illustrateButton").textContent = "AI illustrated version";
-  $("#illustrateButton").disabled = false;
+  $("#illustrateButton").textContent = isApiMode() ? "AI illustrated version" : "API mode required";
+  $("#illustrateButton").disabled = !isApiMode();
   renderReport(pack.report);
 }
 
@@ -245,7 +316,7 @@ function resetPublishingPack() {
   $("#studioContent").hidden = true;
 }
 
-async function ensurePublishingPack() {
+async function ensureApiPublishingPack() {
   if (!capturedCues.length || !context?.videoId) throw new Error("Capture a YouTube transcript first.");
   const language = $("#artifactLanguage").value;
   const signature = `${context.videoId}:${language}:${capturedCues.length}:${capturedCues.at(-1)?.startMs || 0}`;
@@ -274,6 +345,93 @@ async function ensurePublishingPack() {
   } finally { setBusy(false); }
 }
 
+async function getOnDeviceTranslator(language, button = null) {
+  const targetLanguage = languageCode(language);
+  if (targetLanguage === "ko") return null;
+  if (translator && translatorLanguage === targetLanguage) return translator;
+  if (!("Translator" in self)) throw new Error("Chrome on-device Translator is unavailable. Update Chrome and check built-in AI availability on this device.");
+  const options = { sourceLanguage: "ko", targetLanguage };
+  const availability = await self.Translator.availability(options);
+  if (availability === "unavailable") throw new Error(`The Korean → ${language} on-device language pack is unavailable on this device.`);
+  translator = await self.Translator.create({
+    ...options,
+    monitor(monitor) {
+      monitor.addEventListener("downloadprogress", (event) => {
+        const percent = Math.round((event.loaded || 0) * 100);
+        if (button) button.textContent = `Downloading ${percent}%`;
+        setProgress(Math.max(2, Math.min(18, percent * .18)), `Downloading ${language} language pack…`);
+      });
+    }
+  });
+  translatorLanguage = targetLanguage;
+  return translator;
+}
+
+async function translateCuesOnDevice(cues, language, signal) {
+  const targetLanguage = languageCode(language);
+  if (targetLanguage === "ko") return cues.map((cue) => ({ ...cue, en: cue.ko, source: "on-device-extractive" }));
+  const deviceTranslator = await getOnDeviceTranslator(language, $("#localAiButton"));
+  const output = new Array(cues.length);
+  let cursor = 0;
+  let completed = 0;
+  const worker = async () => {
+    while (cursor < cues.length) {
+      if (signal?.aborted) throw new DOMException("Cancelled", "AbortError");
+      const index = cursor++;
+      const cue = cues[index];
+      const translated = await deviceTranslator.translate(cue.ko);
+      output[index] = { ...cue, en: translated, source: "on-device-translator" };
+      completed += 1;
+      setProgress(18 + (completed / cues.length) * 58, `Translated ${completed}/${cues.length} cues on device…`);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(3, cues.length) }, worker));
+  return output;
+}
+
+async function buildOnDevicePack(language, signal) {
+  const sourcePack = buildLocalPublishingPack({ title: context.title, cues: capturedCues });
+  if (languageCode(language) === "ko") return sourcePack;
+  const deviceTranslator = await getOnDeviceTranslator(language, $("#localAiButton"));
+  let translatedFields = 0;
+  return translateObjectStrings(sourcePack, async (text) => {
+    if (signal?.aborted) throw new DOMException("Cancelled", "AbortError");
+    const value = await deviceTranslator.translate(text);
+    translatedFields += 1;
+    setProgress(Math.min(94, 76 + translatedFields * .45), `Building local ${language} report…`);
+    return value;
+  });
+}
+
+async function ensureOnDevicePublishingPack() {
+  if (!capturedCues.length || !context?.videoId) throw new Error("Capture a YouTube transcript first.");
+  const language = $("#artifactLanguage").value;
+  const signature = `device:${context.videoId}:${language}:${capturedCues.length}:${capturedCues.at(-1)?.startMs || 0}`;
+  if (publishingPack && signature === publishingSignature) return publishingPack;
+  currentAbort = new AbortController();
+  setBusy(true);
+  setHeaderStatus("local brief", "busy");
+  setProgress(5, "Preparing private on-device publishing pack…");
+  try {
+    const pack = await buildOnDevicePack(language, currentAbort.signal);
+    renderPublishingPack(pack, language);
+    publishingSignature = signature;
+    setProgress(100, "Local infographic and report ready");
+    setConnectionStatus("On-device publishing pack created. No OpenAI API request was made.", "success");
+    setHeaderStatus("complete");
+    return pack;
+  } catch (error) {
+    if (error.name === "AbortError") setConnectionStatus("On-device job cancelled.", "error");
+    else setConnectionStatus(error.message, "error");
+    setHeaderStatus("error", "error");
+    throw error;
+  } finally { setBusy(false); }
+}
+
+async function ensurePublishingPack() {
+  return isApiMode() ? ensureApiPublishingPack() : ensureOnDevicePublishingPack();
+}
+
 async function openPublishingArtifact(kind) {
   try {
     await ensurePublishingPack();
@@ -283,6 +441,10 @@ async function openPublishingArtifact(kind) {
 }
 
 async function toggleIllustratedInfographic() {
+  if (!isApiMode()) {
+    setConnectionStatus("AI illustrated infographics require OpenAI API mode. The accurate canvas PNG is available on device.", "error");
+    return;
+  }
   if (!publishingPack) return;
   if (illustratedInfographicDataUrl && activeInfographicDataUrl === illustratedInfographicDataUrl) {
     activeInfographicDataUrl = accurateInfographicDataUrl;
@@ -353,6 +515,7 @@ function populateSettingsForm() {
 function readSettingsForm() {
   return {
     nextSettings: {
+      runMode: settings.runMode,
       mode: $("#connectionMode").value,
       proxyEndpoint: $("#proxyEndpoint").value,
       translationModel: $("#translationModel").value,
@@ -367,6 +530,7 @@ function readSettingsForm() {
 
 async function saveSettingsFromForm() {
   const { nextSettings, nextSecrets } = readSettingsForm();
+  if (nextSettings.runMode !== "api") throw new Error("Switch to OpenAI API mode before saving an API connection.");
   if (nextSettings.mode === "direct" && !$("#directConsent").checked) throw new Error("Confirm the direct-key warning first.");
   if (nextSettings.mode === "proxy") {
     const granted = await requestProxyPermission(nextSettings.proxyEndpoint);
@@ -395,7 +559,9 @@ async function captureTranscript() {
       throw new Error("No transcript found. On YouTube, open the description/menu and choose Show transcript, then try again. You can also watch with Korean captions to collect cues live.");
     }
     $("#captureHelp").textContent = `${capturedCues.length} cues captured from ${transcriptSource.replaceAll("-", " ")}.`;
-    setConnectionStatus("Transcript ready. Configure Settings, then run Translate + analyze.", "success");
+    setConnectionStatus(isApiMode()
+      ? "Transcript ready. Configure the API connection in Settings, then run Translate + analyze."
+      : "Transcript ready. Run the private on-device workflow; no API key is required.", "success");
     switchTab("transcript");
   } catch (error) {
     setConnectionStatus(error.message, "error");
@@ -405,7 +571,7 @@ async function captureTranscript() {
   }
 }
 
-async function analyzeVideo() {
+async function analyzeWithApi() {
   if (!capturedCues.length || !context?.videoId) return;
   currentAbort = new AbortController();
   setBusy(true);
@@ -465,24 +631,77 @@ async function analyzeVideo() {
   }
 }
 
+async function analyzeOnDevice() {
+  if (!capturedCues.length || !context?.videoId) return;
+  const language = $("#artifactLanguage").value;
+  currentAbort = new AbortController();
+  setBusy(true);
+  setHeaderStatus("on device", "busy");
+  setProgress(2, "Starting private on-device workflow…");
+  try {
+    const translatedCues = await translateCuesOnDevice(capturedCues, language, currentAbort.signal);
+    setProgress(78, "Building extractive summary, report and canvas plan…");
+    const sourcePack = buildLocalPublishingPack({ title: context.title, cues: capturedCues });
+    const pack = languageCode(language) === "ko"
+      ? sourcePack
+      : await translateObjectStrings(sourcePack, async (text) => {
+          if (currentAbort.signal.aborted) throw new DOMException("Cancelled", "AbortError");
+          return translator.translate(text);
+        });
+    const analysis = analysisFromLocalPack(pack);
+    const transcriptHash = await fingerprintTranscript(capturedCues);
+    const payload = {
+      schemaVersion: 3,
+      video: { id: context.videoId, titleKo: context.title, titleEn: analysis.title, durationMs: context.durationMs },
+      transcript: { language: "ko", complete: transcriptSource === "youtube-transcript-panel", cues: translatedCues },
+      english: {
+        language,
+        summary: { tldr: analysis.tldr, keyPoints: analysis.keyPoints, chapters: analysis.chapters },
+        glossary: []
+      },
+      provenance: {
+        transcriptSource,
+        translationProvider: languageCode(language) === "ko" ? "On-device source text" : "Chrome on-device Translator",
+        summaryProvider: "On-device extractive brief",
+        transcriptHash,
+        generatedAt: new Date().toISOString(),
+        reviewed: false,
+        runMode: "device"
+      }
+    };
+    await chrome.runtime.sendMessage({ type: "PUBLISH_LOCALIZATION", payload });
+    renderLocalization(payload);
+    renderPublishingPack(pack, language);
+    publishingSignature = `device:${context.videoId}:${language}:${capturedCues.length}:${capturedCues.at(-1)?.startMs || 0}`;
+    setProgress(100, "On-device subtitles, report and infographic ready");
+    setConnectionStatus("Completed privately on device. No OpenAI API request was made.", "success");
+    switchTab("summary");
+    setHeaderStatus("complete");
+  } catch (error) {
+    if (error.name === "AbortError") setConnectionStatus("On-device job cancelled.", "error");
+    else setConnectionStatus(error.message, "error");
+    setHeaderStatus("error", "error");
+  } finally { setBusy(false); }
+}
+
+async function analyzeVideo() {
+  if (isApiMode()) return analyzeWithApi();
+  return analyzeOnDevice();
+}
+
 async function enableOnDeviceTranslation() {
   const button = $("#localAiButton");
   button.disabled = true;
+  const language = $("#artifactLanguage").value;
   try {
-    if (!("Translator" in self)) throw new Error("Chrome on-device Translator is unavailable on this device.");
-    const availability = await self.Translator.availability({ sourceLanguage: "ko", targetLanguage: "en" });
-    if (availability === "unavailable") throw new Error("The Korean → English language pack is unavailable.");
-    translator = await self.Translator.create({
-      sourceLanguage: "ko",
-      targetLanguage: "en",
-      monitor(monitor) {
-        monitor.addEventListener("downloadprogress", (event) => {
-          button.textContent = `Downloading ${Math.round((event.loaded || 0) * 100)}%`;
-        });
-      }
-    });
+    if (languageCode(language) === "ko") {
+      button.textContent = "Korean source";
+      setConnectionStatus("Korean output uses the visible source captions directly; no language pack is needed.", "success");
+      return;
+    }
+    await getOnDeviceTranslator(language, button);
     button.textContent = "Live ready";
-    setConnectionStatus("On-device live translation enabled. Keep Korean YouTube captions visible.", "success");
+    setConnectionStatus(`On-device Korean → ${language} translation is ready. Keep Korean YouTube captions visible.`, "success");
   } catch (error) {
     button.textContent = "Unavailable";
     setConnectionStatus(error.message, "error");
@@ -492,7 +711,10 @@ async function enableOnDeviceTranslation() {
 async function initialize() {
   ({ settings, secrets } = await loadConnection());
   populateSettingsForm();
+  updateRunModeUi();
   const response = await chrome.runtime.sendMessage({ type: "REQUEST_ACTIVE_VIDEO" });
+  $("#subtitleToggle").checked = response?.subtitlesEnabled !== false;
+  $("#subtitleStatus").textContent = $("#subtitleToggle").checked ? "On · waiting for translated cues" : "Off · overlay hidden";
   context = response?.context || null;
   if (context?.title) {
     $("#videoTitle").textContent = context.title;
@@ -506,19 +728,50 @@ async function initialize() {
     transcriptSource = response.localization.provenance?.transcriptSource || "cached";
     updateTranscriptStatus();
     setConnectionStatus("Loaded a cached analysis for this video.", "success");
+  } else if (!isApiMode()) {
+    setConnectionStatus("On-device mode selected. Capture a transcript to create private subtitles, a quick report and an accurate canvas infographic.");
   } else if (settings.mode === "proxy") {
-    setConnectionStatus(`Proxy configured · subtitles ${settings.translationModel} / summary ${settings.analysisModel}`);
+    setConnectionStatus(`API proxy selected · subtitles ${settings.translationModel} / analysis ${settings.analysisModel}`);
   } else {
-    setConnectionStatus(`Session-key mode · subtitles ${settings.translationModel} / summary ${settings.analysisModel}`);
+    setConnectionStatus(`API session-key mode · subtitles ${settings.translationModel} / analysis ${settings.analysisModel}`);
   }
 }
 
 document.querySelectorAll(".tabs button").forEach((button) => button.addEventListener("click", () => switchTab(button.dataset.tab)));
+document.querySelectorAll("[data-run-mode]").forEach((button) => button.addEventListener("click", () => setRunMode(button.dataset.runMode, { openSettings: button.dataset.runMode === "api" })));
+$("#openSettingsButton").addEventListener("click", () => setRunMode("api", { openSettings: true }));
+$("#switchToApiButton").addEventListener("click", () => setRunMode("api", { openSettings: true }));
 $("#connectionMode").addEventListener("change", updateModeFields);
-$("#artifactLanguage").addEventListener("change", (event) => { $("#targetLanguage").value = event.target.value; resetPublishingPack(); });
-$("#targetLanguage").addEventListener("change", (event) => { $("#artifactLanguage").value = event.target.value; resetPublishingPack(); });
+$("#artifactLanguage").addEventListener("change", (event) => {
+  $("#targetLanguage").value = event.target.value;
+  translator = null;
+  translatorLanguage = "";
+  resetPublishingPack();
+  updateRunModeUi();
+});
+$("#targetLanguage").addEventListener("change", (event) => {
+  $("#artifactLanguage").value = event.target.value;
+  translator = null;
+  translatorLanguage = "";
+  resetPublishingPack();
+  updateRunModeUi();
+});
 $("#transcriptSearch").addEventListener("input", (event) => renderTranscript(event.target.value));
-$("#subtitleToggle").addEventListener("change", (event) => chrome.runtime.sendMessage({ type: "SET_SUBTITLES", payload: { enabled: event.target.checked } }));
+$("#subtitleToggle").addEventListener("change", async (event) => {
+  const enabled = event.target.checked;
+  $("#subtitleStatus").textContent = enabled ? "On · applying to the active player…" : "Off · overlay hidden";
+  const response = await chrome.runtime.sendMessage({ type: "SET_SUBTITLES", payload: { enabled } }).catch(() => null);
+  if (!enabled) {
+    $("#subtitleStatus").textContent = "Off · overlay hidden";
+    setConnectionStatus("Player subtitle overlay turned off.", "success");
+  } else if (response?.delivered) {
+    $("#subtitleStatus").textContent = "On · active on the YouTube player";
+    setConnectionStatus("Player subtitle overlay turned on.", "success");
+  } else {
+    $("#subtitleStatus").textContent = "On · reopen or refresh the YouTube video";
+    setConnectionStatus("Subtitle preference was saved, but the active YouTube content script did not respond. Refresh the video tab once.", "error");
+  }
+});
 $("#captureButton").addEventListener("click", captureTranscript);
 $("#analyzeButton").addEventListener("click", analyzeVideo);
 $("#createInfographicButton").addEventListener("click", () => openPublishingArtifact("infographic"));

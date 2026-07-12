@@ -17,6 +17,7 @@ import {
   parseTimestamp
 } from "../sidepanel/api-client.js";
 import { buildReportHtml, buildReportMarkdown, formatTimestamp, slugify } from "../sidepanel/artifacts.js";
+import { analysisFromLocalPack, buildLocalPublishingPack, chooseRepresentativeCues, languageCode, translateObjectStrings } from "../sidepanel/on-device.js";
 
 test("parses YouTube timestamps", () => {
   assert.equal(parseTimestamp("02:15"), 135000);
@@ -25,11 +26,18 @@ test("parses YouTube timestamps", () => {
 });
 
 test("uses a cost-balanced default and exposes supported model choices", () => {
+  assert.equal(DEFAULT_SETTINGS.runMode, "device");
   assert.equal(DEFAULT_SETTINGS.translationModel, "gpt-5.4-mini");
   assert.equal(DEFAULT_SETTINGS.analysisModel, "gpt-5.6-luna");
   assert.deepEqual(MODEL_CATALOG.map((model) => model.id), [
     "gpt-5.4-mini", "gpt-5.6-luna", "gpt-5.4", "gpt-5.6-terra", "gpt-5.5", "gpt-5.6-sol"
   ]);
+});
+
+test("migrates processing mode safely", () => {
+  assert.equal(migrateSettings({}).runMode, "device");
+  assert.equal(migrateSettings({ runMode: "api" }).runMode, "api");
+  assert.equal(migrateSettings({ runMode: "unknown" }).runMode, "device");
 });
 
 test("migrates the old Sol default to the cheaper balanced pair", () => {
@@ -156,7 +164,37 @@ test("transcript fingerprints are stable and sensitive to content", async () => 
 
 test("ships the infographic and report studio controls", async () => {
   const html = await readFile(new URL("../sidepanel/index.html", import.meta.url), "utf8");
-  for (const id of ["artifactLanguage", "createInfographicButton", "createReportButton", "infographicPreview", "reportPreview", "imageQuality"]) {
+  for (const id of ["deviceModeButton", "apiModeButton", "openSettingsButton", "subtitleToggle", "artifactLanguage", "createInfographicButton", "createReportButton", "infographicPreview", "reportPreview", "imageQuality"]) {
     assert.match(html, new RegExp(`id=["']${id}["']`));
   }
+});
+
+test("wires settings shortcuts and persistent subtitle delivery", async () => {
+  const sidepanel = await readFile(new URL("../sidepanel/sidepanel.js", import.meta.url), "utf8");
+  const background = await readFile(new URL("../background.js", import.meta.url), "utf8");
+  assert.match(sidepanel, /openSettingsButton.*addEventListener/);
+  assert.match(sidepanel, /switchToApiButton.*addEventListener/);
+  assert.match(sidepanel, /subtitleToggle.*addEventListener/);
+  assert.match(background, /chrome\.storage\.local\.set\(\{ subtitlesEnabled: enabled \}\)/);
+  assert.match(background, /delivered/);
+});
+
+test("builds a complete no-API publishing pack from local cues", async () => {
+  const cues = Array.from({ length: 12 }, (_, index) => ({
+    id: `c${index}`,
+    startMs: index * 10_000,
+    endMs: index * 10_000 + 8_000,
+    ko: `한국어 핵심 문장 ${index + 1}`
+  }));
+  const representatives = chooseRepresentativeCues(cues, 4);
+  assert.deepEqual(representatives.map((cue) => cue.id), ["c0", "c4", "c7", "c11"]);
+  const pack = buildLocalPublishingPack({ title: "테스트 방송", cues });
+  assert.equal(pack.infographic.facts.length, 3);
+  assert.equal(pack.infographic.timeline.length, 4);
+  assert.equal(pack.infographic.takeaways.length, 3);
+  assert.equal(pack.report.sections.length, 4);
+  assert.equal(analysisFromLocalPack(pack).chapters.length, 4);
+  const translated = await translateObjectStrings({ title: "제목", startMs: 1000 }, async (text) => `EN:${text}`);
+  assert.deepEqual(translated, { title: "EN:제목", startMs: 1000 });
+  assert.equal(languageCode("Japanese"), "ja");
 });

@@ -1,4 +1,5 @@
 export const DEFAULT_SETTINGS = Object.freeze({
+  runMode: "device",
   mode: "proxy",
   proxyEndpoint: "http://localhost:8787/v1/responses",
   translationModel: "gpt-5.4-mini",
@@ -181,6 +182,7 @@ export function migrateSettings(saved = {}) {
   return {
     ...DEFAULT_SETTINGS,
     ...saved,
+    runMode: saved.runMode === "api" ? "api" : "device",
     translationModel: MODEL_IDS.has(saved.translationModel) ? saved.translationModel : legacyModel || DEFAULT_SETTINGS.translationModel,
     analysisModel: MODEL_IDS.has(saved.analysisModel) ? saved.analysisModel : legacyModel || DEFAULT_SETTINGS.analysisModel,
     imageQuality: ["low", "medium", "high"].includes(saved.imageQuality) ? saved.imageQuality : DEFAULT_SETTINGS.imageQuality
@@ -198,6 +200,7 @@ export async function loadConnection() {
 
 export async function saveConnection(settings, secrets) {
   const normalized = {
+    runMode: settings.runMode === "api" ? "api" : "device",
     mode: settings.mode === "direct" ? "direct" : "proxy",
     proxyEndpoint: String(settings.proxyEndpoint || DEFAULT_SETTINGS.proxyEndpoint).trim(),
     translationModel: String(settings.translationModel || DEFAULT_SETTINGS.translationModel).trim(),

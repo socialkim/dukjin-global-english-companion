@@ -2,6 +2,9 @@ const MAX_CUES = 5000;
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
+  chrome.storage.local.get("subtitlesEnabled").then(({ subtitlesEnabled }) => {
+    if (typeof subtitlesEnabled !== "boolean") chrome.storage.local.set({ subtitlesEnabled: true });
+  });
 });
 
 function cleanText(value, max = 1000) {
@@ -74,17 +77,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "VIDEO_CONTEXT_CHANGED") {
     saveActiveContext(message.payload, sender.tab?.id).then(async (context) => {
       const localization = await getLocalization(context.videoId);
+      const { subtitlesEnabled = true } = await chrome.storage.local.get("subtitlesEnabled");
       if (localization && sender.tab?.id) {
         await chrome.tabs.sendMessage(sender.tab.id, { type: "LOCALIZATION_READY", payload: localization }).catch(() => {});
       }
-      sendResponse({ ok: true, context, localization });
+      if (sender.tab?.id) {
+        await chrome.tabs.sendMessage(sender.tab.id, { type: "SET_SUBTITLES", payload: { enabled: subtitlesEnabled } }).catch(() => {});
+      }
+      sendResponse({ ok: true, context, localization, subtitlesEnabled });
     });
     return true;
   }
 
   if (message.type === "REQUEST_ACTIVE_VIDEO") {
     getActiveContext().then(async (context) => {
-      sendResponse({ context, localization: await getLocalization(context?.videoId) });
+      const { subtitlesEnabled = true } = await chrome.storage.local.get("subtitlesEnabled");
+      sendResponse({ context, localization: await getLocalization(context?.videoId), subtitlesEnabled });
     });
     return true;
   }
@@ -120,7 +128,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  if (message.type === "SEEK_TO" || message.type === "SET_SUBTITLES" || message.type === "RENDER_LIVE_CUE") {
+  if (message.type === "SET_SUBTITLES") {
+    const enabled = Boolean(message.payload?.enabled);
+    chrome.storage.local.set({ subtitlesEnabled: enabled }).then(async () => {
+      const context = await getActiveContext();
+      let delivered = false;
+      if (context?.tabId) {
+        delivered = await chrome.tabs.sendMessage(context.tabId, { type: "SET_SUBTITLES", payload: { enabled } })
+          .then(() => true)
+          .catch(() => false);
+      }
+      sendResponse({ ok: true, enabled, delivered });
+    });
+    return true;
+  }
+
+  if (message.type === "SEEK_TO" || message.type === "RENDER_LIVE_CUE") {
     getActiveContext().then(async (context) => {
       if (context?.tabId) await chrome.tabs.sendMessage(context.tabId, message).catch(() => {});
       sendResponse({ ok: true });

@@ -146,6 +146,7 @@
       type: "VIDEO_CONTEXT_CHANGED",
       payload: { videoId, title: document.title.replace(" - YouTube", ""), durationMs: Math.round((video?.duration || 0) * 1000) }
     }).catch(() => null);
+    if (typeof response?.subtitlesEnabled === "boolean") state.enabled = response.subtitlesEnabled;
     if (response?.localization) applyLocalization(response.localization);
     setTimeout(connectCaptionObserver, 500);
   }
@@ -173,6 +174,8 @@
       state.enabled = Boolean(message.payload?.enabled);
       state.cueIndex = -1;
       if (!state.enabled && state.overlay) state.overlay.style.display = "none";
+      sendResponse({ ok: true, enabled: state.enabled, cueCount: state.cues.length });
+      return true;
     }
     if (message?.type === "RENDER_LIVE_CUE" && message.payload?.videoId === state.videoId) {
       const cue = message.payload.cue;
