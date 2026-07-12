@@ -1,5 +1,4 @@
 import {
-  artifactLabels,
   DEFAULT_SETTINGS,
   OpenAIConnection,
   clearSessionSecrets,
@@ -9,6 +8,7 @@ import {
   saveConnection
 } from "./api-client.js";
 import {
+  artifactLabels,
   buildReportHtml,
   buildReportMarkdown,
   downloadText,

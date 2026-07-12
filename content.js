@@ -99,7 +99,12 @@
   }
 
   function collectTranscriptRows() {
-    const primary = [...document.querySelectorAll("ytd-transcript-segment-renderer, transcript-segment-view-model")];
+    const primary = [...document.querySelectorAll([
+      "ytd-transcript-segment-renderer",
+      "transcript-segment-view-model",
+      "[class*='TranscriptSegmentViewModel'][role='button']",
+      "[class*='transcript-segment'][role='button']"
+    ].join(", "))];
     if (primary.length) return primary;
     return [...document.querySelectorAll("ytd-transcript-segment-list-renderer [role='button']")].filter((row) => /\d{1,2}:\d{2}/.test(row.textContent || ""));
   }

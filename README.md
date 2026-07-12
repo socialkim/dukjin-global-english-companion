@@ -2,7 +2,7 @@
 
 > **Built with Codex · Powered by ChatGPT 5.6 Sol**
 
-한국어 YouTube 방송을 다국어 자막, 한 장 인포그래픽, 보고서로 전환하는 Chrome Manifest V3 확장 프로그램입니다. v0.4.0부터 작업을 시작하기 전에 **온디바이스 모드**와 **OpenAI API 모드**를 명확히 선택합니다.
+한국어 YouTube 방송을 다국어 자막, 한 장 인포그래픽, 보고서로 전환하는 Chrome Manifest V3 확장 프로그램입니다. v0.4부터 작업을 시작하기 전에 **온디바이스 모드**와 **OpenAI API 모드**를 명확히 선택합니다. v0.4.1은 v0.4.0의 사이드패널 모듈 로딩 오류를 수정한 필수 업데이트입니다.
 
 ## 두 가지 모드
 
@@ -21,7 +21,7 @@
 
 ## 설치
 
-1. GitHub Releases에서 최신 `dukjin-global-extension-v0.4.0.zip`을 내려받아 압축을 풉니다.
+1. GitHub Releases에서 최신 `dukjin-global-extension-v0.4.1.zip`을 내려받아 압축을 풉니다.
 2. Chrome에서 `chrome://extensions`를 엽니다.
 3. **개발자 모드**를 켭니다.
 4. **압축해제된 확장 프로그램을 로드합니다**를 누르고 압축을 푼 폴더를 선택합니다.

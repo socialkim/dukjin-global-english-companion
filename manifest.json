@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Dukjin Global — AI Video Studio",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "minimum_chrome_version": "138",
   "description": "Choose private on-device or OpenAI API processing for multilingual YouTube subtitles, one-page infographics and reports.",
   "permissions": ["storage", "sidePanel"],
