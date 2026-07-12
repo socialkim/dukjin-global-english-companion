@@ -5,59 +5,105 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Dukjin Global</title>
   <link rel="stylesheet" href="sidepanel.css" />
-  <link rel="stylesheet" href="live.css" />
 </head>
 <body>
-  <header>
+  <header class="app-header">
     <div class="logo">DG</div>
-    <div><b>Dukjin Global</b><small>ENGLISH COMPANION</small></div>
-    <span class="status"><i></i> ACTIVE</span>
+    <div><b>Dukjin Global</b><small>AI SUBTITLE COMPANION</small></div>
+    <span id="headerStatus" class="status"><i></i> READY</span>
   </header>
+
   <main>
     <section class="video-meta">
       <span id="sourceBadge">WAITING FOR YOUTUBE</span>
-      <h1 id="videoTitle">Open a Kim Dukjin video to begin.</h1>
-      <p id="videoTitleKo">The side panel will follow your active YouTube video.</p>
+      <h1 id="videoTitle">Open a Korean YouTube video.</h1>
+      <p id="videoTitleKo">The companion follows the active YouTube tab.</p>
     </section>
-    <section id="emptyState" class="empty">
-      <div>CC</div>
-      <h2>English, right beside the broadcast.</h2>
-      <p>For the full offline demo, open the included GPT-5 episode. Other videos can use Chrome's on-device language model when Korean captions are visible.</p>
-      <a href="https://www.youtube.com/watch?v=YTfathQEoXc" target="_blank">Open demo episode ↗</a>
-      <button id="liveAiButton" class="live-button">Start live on-device translation</button>
-      <div id="liveTranslation" class="live-translation" hidden><small>LIVE ENGLISH</small><b></b><span></span></div>
-    </section>
-    <section id="appState" hidden>
-      <div class="controls">
-        <label><input id="subtitleToggle" type="checkbox" checked /><span></span> English subtitles</label>
-        <button id="localAiButton">Check on-device AI</button>
+
+    <section class="workflow-card">
+      <div class="workflow-head">
+        <div><small>TRANSCRIPT</small><b id="transcriptStatus">Not captured</b></div>
+        <span id="cueCount">0 cues</span>
       </div>
-      <div id="modelStatus" class="model-status">Pre-generated demo · no data leaves your browser</div>
-      <nav class="tabs" aria-label="Content view">
-        <button data-tab="summary" class="active">Summary</button>
-        <button data-tab="transcript">Transcript</button>
-        <button data-tab="glossary">Glossary</button>
-      </nav>
-      <section id="summary" class="tab-panel active">
+      <p id="captureHelp">Open YouTube's transcript panel for full-video analysis, or watch with Korean captions to collect live cues.</p>
+      <div class="action-row">
+        <button id="captureButton" class="secondary">1. Capture transcript</button>
+        <button id="analyzeButton" class="primary" disabled>2. Translate + analyze</button>
+      </div>
+      <button id="cancelButton" class="cancel" hidden>Cancel analysis</button>
+      <div id="progressPanel" class="progress-panel" hidden>
+        <div><span id="progressLabel">Preparing…</span><b id="progressPercent">0%</b></div>
+        <progress id="analysisProgress" max="100" value="0"></progress>
+      </div>
+      <div id="connectionStatus" class="connection-status">Configure an AI connection in Settings, or use Chrome's on-device live translator.</div>
+    </section>
+
+    <section class="live-card">
+      <div><small>NO API FALLBACK</small><b>Live on-device translation</b></div>
+      <button id="localAiButton">Enable</button>
+      <div id="liveTranslation" class="live-translation" hidden><small>LIVE TRANSLATION</small><b></b><span></span></div>
+    </section>
+
+    <div class="controls">
+      <label><input id="subtitleToggle" type="checkbox" checked /><span></span> Player subtitles</label>
+      <button id="clearVideoButton">Clear video cache</button>
+    </div>
+
+    <nav class="tabs" aria-label="Content view">
+      <button data-tab="summary" class="active">Summary</button>
+      <button data-tab="transcript">Transcript</button>
+      <button data-tab="glossary">Glossary</button>
+      <button data-tab="settings">Settings</button>
+    </nav>
+
+    <section id="summary" class="tab-panel active">
+      <div id="summaryEmpty" class="panel-empty"><b>No analysis yet</b><p>Capture the transcript, configure your connection, then run Translate + analyze.</p></div>
+      <div id="summaryContent" hidden>
         <small class="label">TL;DR</small>
         <h2 id="tldr"></h2>
         <div class="section-title"><b>Key points</b><span id="keyPointCount"></span></div>
         <ol id="keyPoints" class="key-points"></ol>
         <div class="section-title"><b>Chapters</b></div>
         <div id="chapters" class="chapters"></div>
-      </section>
-      <section id="transcript" class="tab-panel">
-        <label class="search"><span>⌕</span><input id="transcriptSearch" placeholder="Search English transcript" /></label>
-        <div id="transcriptList" class="transcript-list"></div>
-      </section>
-      <section id="glossary" class="tab-panel">
-        <div class="glossary-row"><b>생태계</b><span>ecosystem</span><p>The network of models, apps, developers and distribution.</p></div>
-        <div class="glossary-row"><b>왕의 귀환</b><span>the king's return</span><p>A metaphor for reclaiming market leadership.</p></div>
-        <div class="glossary-row"><b>실사용</b><span>real-world use</span><p>Evaluation based on everyday workflows, not benchmarks.</p></div>
-      </section>
-      <footer><span>AI-generated</span> Verify names, numbers and product claims.<small>Built with Codex · Powered by ChatGPT 5.6sol</small></footer>
+      </div>
     </section>
+
+    <section id="transcript" class="tab-panel">
+      <label class="search"><span>⌕</span><input id="transcriptSearch" placeholder="Search Korean or translated transcript" /></label>
+      <div id="transcriptList" class="transcript-list"></div>
+    </section>
+
+    <section id="glossary" class="tab-panel">
+      <div id="glossaryEmpty" class="panel-empty"><b>No glossary yet</b><p>Technical names and consistent translations will appear after analysis.</p></div>
+      <div id="glossaryList"></div>
+    </section>
+
+    <section id="settings" class="tab-panel settings-panel">
+      <div class="section-title"><b>AI connection</b><span>BYOK</span></div>
+      <label class="field"><span>Connection mode</span><select id="connectionMode"><option value="proxy">Secure proxy (recommended)</option><option value="direct">Personal session key (advanced)</option></select></label>
+
+      <div id="proxyFields">
+        <label class="field"><span>Proxy Responses endpoint</span><input id="proxyEndpoint" type="url" placeholder="http://localhost:8787/v1/responses" /></label>
+        <label class="field"><span>Proxy token <small>session only</small></span><input id="proxyToken" type="password" autocomplete="off" placeholder="Optional shared secret" /></label>
+        <p class="security-note good">Recommended: the proxy keeps <code>OPENAI_API_KEY</code> outside Chrome. A ready-to-run proxy is included in the repository.</p>
+      </div>
+
+      <div id="directFields" hidden>
+        <label class="field"><span>OpenAI API key <small>session only</small></span><input id="apiKey" type="password" autocomplete="off" placeholder="sk-…" /></label>
+        <label class="consent"><input id="directConsent" type="checkbox" /> I understand that direct browser API keys are not recommended for production. This key will be deleted when Chrome exits.</label>
+        <p class="security-note warning">Use a dedicated restricted project key and a low spending limit. For public distribution, use the proxy mode.</p>
+      </div>
+
+      <label class="field"><span>Model</span><input id="model" value="gpt-5.6-sol" /></label>
+      <label class="field"><span>Output language</span><select id="targetLanguage"><option>English</option><option>Japanese</option><option>Spanish</option><option>French</option><option>German</option><option>Portuguese</option></select></label>
+      <label class="field"><span>Subtitle style</span><select id="translationStyle"><option value="natural broadcast subtitles">Natural broadcast</option><option value="concise two-line subtitles">Concise</option><option value="literal technical translation">Literal technical</option></select></label>
+      <div class="action-row settings-actions"><button id="saveSettingsButton" class="primary">Save session</button><button id="testConnectionButton" class="secondary">Test connection</button></div>
+      <button id="forgetSecretsButton" class="danger-link">Forget API key / token now</button>
+      <p class="settings-footnote">Credentials are never committed or synced. API requests include the captured transcript only when you explicitly run analysis.</p>
+    </section>
+
+    <footer><span>AI-generated</span> Verify names, numbers and product claims.<small>Built with Codex · Powered by ChatGPT 5.6sol</small></footer>
   </main>
-  <script src="sidepanel.js"></script>
+  <script type="module" src="sidepanel.js"></script>
 </body>
 </html>
